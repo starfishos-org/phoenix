@@ -200,4 +200,12 @@ void emit(void *key, void *val);
  */
 int default_partition(int reduce_tasks, void* key, int key_size);
 
+#define MR_L1CACHESIZE 1024 * 512
+#define MR_NUMTHREADS 1
+#define MR_NUMPROCS 1
+#define MR_KEYMATCHFACTOR 2
+#define MAPRED_NPROCESSORS 1
+
+void parse_map_reduce_args(int argc, char *argv[], map_reduce_args_t *args);
+
 #endif // MAP_REDUCE_H_

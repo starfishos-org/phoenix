@@ -34,13 +34,13 @@ ifeq ($(OSTYPE),CYGWIN_NT-5.1)
 OS = -D_CYGWIN_
 endif
 
-ifeq ($(OSTYPE),Linux)
+# ifeq ($(OSTYPE),Linux)
 OS = -D_LINUX_
-CC = gcc
+# CC = gcc
 #DEBUG = -g
 CFLAGS = -Wall $(OS) $(DEBUG) -O3
 LIBS = -pthread
-endif
+# endif
 
 ifeq ($(OSTYPE),SunOS)
 OS =  -D_SOLARIS_

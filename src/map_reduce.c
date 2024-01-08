@@ -26,7 +26,7 @@
 
 #include <assert.h>
 #include <pthread.h>
-#include <sys/unistd.h>
+// #include <sys/unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -56,7 +56,7 @@
 #include "tpool.h"
 
 #if !defined(_LINUX_) && !defined(_SOLARIS_)
-#error OS not supported
+// #error OS not supported
 #endif
 
 /* Begin tunables. */
