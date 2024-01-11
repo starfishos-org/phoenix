@@ -119,11 +119,11 @@ int proc_bind_thread (int cpu_id)
 
 int proc_unbind_thread ()
 {
-    int ret;
-    ret = usys_set_affinity(-1, NO_AFF);
-    if (!ret) return ret;
-    ret = usys_yield();
-    if (!ret) return ret;
+    // int ret;
+    // ret = usys_set_affinity(-1, NO_AFF);
+    // if (!ret) return ret;
+    // ret = usys_yield();
+    // if (!ret) return ret;
     return 0;
 #ifdef _LINUX_
     return sched_setaffinity (0, sizeof (cpu_set_t), proc_get_full_set());
