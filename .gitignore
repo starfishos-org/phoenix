@@ -5,6 +5,9 @@
 !Makefile
 !/src/Makefile
 !/test/Makefile
+!/data/
+!/data/*datafiles/
+!/data/*datafiles/*
 !Defines.mk
 !README
 !TUNING_NOTES
