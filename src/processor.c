@@ -46,13 +46,24 @@
 #include "processor.h"
 #include "memory.h"
 
+#ifdef _CHCORE_
 #include <chcore/syscall.h>
+
+#define PHOENIX_CPU_NUM (1)
+bool out = false;
+#endif
 
 /* Query the number of CPUs online. */
 int proc_get_num_cpus (void)
 {
-    return 20;
-#if 0
+#ifdef _CHCORE_
+    if (out == false) {
+      printf("phoenix cpu num=%d\n", PHOENIX_CPU_NUM);
+      out = true;
+    }
+  
+    return PHOENIX_CPU_NUM;
+#else
     int num_cpus;
     char *num_proc_str;
 
@@ -99,13 +110,14 @@ static cpu_set_t* proc_get_full_set(void)
    Returns 0 if successful, -1 if failed. */
 int proc_bind_thread (int cpu_id)
 {
+#ifdef _CHCORE_
     int ret;
     ret = usys_set_affinity(-2, cpu_id);
     if (!ret) return ret;
     ret = usys_yield();
     if (!ret) return ret;
     return 0;
-#ifdef _LINUX_
+#elif defined (_LINUX_)
     cpu_set_t   cpu_set;
 
     CPU_ZERO (&cpu_set);
@@ -119,13 +131,14 @@ int proc_bind_thread (int cpu_id)
 
 int proc_unbind_thread ()
 {
+#ifdef _CHCORE_
     // int ret;
     // ret = usys_set_affinity(-1, NO_AFF);
     // if (!ret) return ret;
     // ret = usys_yield();
     // if (!ret) return ret;
     return 0;
-#ifdef _LINUX_
+#elif defined (_LINUX_)
     return sched_setaffinity (0, sizeof (cpu_set_t), proc_get_full_set());
 #elif defined (_SOLARIS_)
     return processor_bind (P_LWPID, P_MYID, PBIND_NONE, NULL);

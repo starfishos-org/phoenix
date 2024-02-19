@@ -33,7 +33,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-//#define TIMING
+#define _CHCORE_
+
+#define TIMING
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
@@ -108,6 +110,22 @@ static inline void get_time (struct timeval *t)
 {
 #ifdef TIMING
     gettimeofday (t, NULL);
+#endif
+}
+
+static inline void get_time0 (struct timeval *t)
+{
+#ifdef TIMING0
+    gettimeofday (t, NULL);
+#endif
+}
+
+static inline int get_cycles(void)
+{
+#ifdef TIMING
+   unsigned int lo, hi;
+	asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+	return (((unsigned long long)hi) << 32) | lo;
 #endif
 }
 
