@@ -70,6 +70,7 @@ pca_data_t pca_data;
 int num_rows;
 int num_cols;
 int grid_size;
+extern int thread_num;
 
 /** parse_args()
  *  Parse the user arguments to determine the number of rows and colums
@@ -83,8 +84,9 @@ void parse_args(int argc, char **argv)
     num_rows = DEF_NUM_ROWS;
     num_cols = DEF_NUM_COLS;
     grid_size = DEF_GRID_SIZE;
-    
-    while ((c = getopt(argc, argv, "r:c:s:")) != EOF) 
+    thread_num = 0;
+
+    while ((c = getopt(argc, argv, "r:c:t:s")) != EOF) 
     {
         switch (c) {
             case 'r':
@@ -96,8 +98,11 @@ void parse_args(int argc, char **argv)
             case 's':
                 grid_size = atoi(optarg);
                 break;
+            case 't':
+                thread_num = atoi(optarg);   
+                break;
             case '?':
-                printf("Usage: %s -r <num_rows> -c <num_cols> -s <max value>\n", argv[0]);
+                printf("Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> \n", argv[0]);
                 exit(1);
         }
     }
@@ -110,6 +115,7 @@ void parse_args(int argc, char **argv)
     printf("Number of rows = %d\n", num_rows);
     printf("Number of cols = %d\n", num_cols);
     printf("Max value for each element = %d\n", grid_size);    
+    printf("Number of threads=%d\n", thread_num);  
 }
 
 /** dump_points()
