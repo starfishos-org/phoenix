@@ -36,6 +36,7 @@
 #define _CHCORE_
 
 #define TIMING
+#define TIMING0
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
@@ -126,6 +127,15 @@ static inline int get_cycles(void)
    unsigned int lo, hi;
 	asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
 	return (((unsigned long long)hi) << 32) | lo;
+#endif
+}
+
+// unit: kilo
+static inline long cycles_diff(long end, long begin)
+{
+#ifdef TIMING
+   // static long kilo = (1 << 10);
+   return (end - begin);
 #endif
 }
 

@@ -380,12 +380,17 @@ int main(int argc, char **argv)
     final_data_t pca_cov_vals;
     map_reduce_args_t map_reduce_args;
     int i;
-    struct timeval begin, end;
+    // struct timeval begin, end;
+    long cbegin, cend;
+    long sum_cbegin, sum_cend;
 #ifdef TIMING
-    unsigned int library_time = 0;
+    // unsigned int library_time = 0;
+    long library_cycles = 0;
 #endif
 
-    get_time (&begin);
+    // get_time (&begin);
+    cbegin = get_cycles();
+    sum_cbegin = get_cycles();
     
     parse_args(argc, argv);    
     
@@ -423,24 +428,31 @@ int main(int argc, char **argv)
     map_reduce_args.num_merge_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
-    
+        
     printf("PCA Mean: Calling MapReduce Scheduler\n");
 
-    get_time (&end);
+    // get_time (&end);
+    cend = get_cycles();
 
 #ifdef TIMING
-    fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "initialize: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
-    get_time (&begin);    
+    // get_time (&begin);
+    cbegin = get_cycles();    
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    get_time (&end);
+    // get_time (&end);
+    cend = get_cycles();
 
 #ifdef TIMING
-    library_time += time_diff (&end, &begin);
+    // library_time += time_diff (&end, &begin);
+    library_cycles += cycles_diff(cend, cbegin);
+    fprintf(stderr, "first lib %lu cycles\n", cycles_diff(cend, cbegin));
 #endif
 
-    get_time (&begin);
+    // get_time (&begin);
+    cbegin = get_cycles();
 
     printf("PCA Mean: MapReduce Completed\n"); 
     
@@ -472,25 +484,32 @@ int main(int argc, char **argv)
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = atoi(GETENV("MR_KEYMATCHFACTOR"));//2;
     map_reduce_args.use_one_queue_per_task = true;
-    
+  
     printf("PCA Cov: Calling MapReduce Scheduler\n");
 
-    get_time (&end);
+    // get_time (&end);
+    cend = get_cycles();
 
 #ifdef TIMING
-    fprintf (stderr, "inter library: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "inter library: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "inter library: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
-    get_time (&begin);
+    // get_time (&begin);
+    cbegin = get_cycles();
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    get_time (&end);
+    // get_time (&end);
+    cend = get_cycles();
 
 #ifdef TIMING
-    library_time += time_diff (&end, &begin);
-    fprintf (stderr, "library: %u\n", library_time);
+    // library_time += time_diff (&end, &begin);
+    library_cycles += cycles_diff(cend, cbegin);
+    fprintf (stderr, "library: %lu cycles\n", library_cycles);
+    fprintf(stderr, "second lib %lu cycles\n", cycles_diff(cend, cbegin));
 #endif
 
-    get_time (&begin);
+    // get_time (&begin);
+    cbegin = get_cycles();
 
     CHECK_ERROR (map_reduce_finalize ());
     
@@ -521,10 +540,14 @@ int main(int argc, char **argv)
     free (pca_mean_vals.data);
     free (pca_data.matrix);
 
-    get_time (&end);
+    // get_time (&end);
+    cend = get_cycles();
+    sum_cend = get_cycles();
 
 #ifdef TIMING
-    fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "finalize: %lu cycles\n", cycles_diff (cend, cbegin));
+    fprintf (stderr, "sum: %lu cycles\n", cycles_diff (sum_cend, sum_cbegin));
 #endif
 
     return 0;

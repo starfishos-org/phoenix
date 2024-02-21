@@ -125,6 +125,13 @@ typedef struct
     uintptr_t combiner_time;
 } thread_timing_t;
 
+typedef struct 
+{
+  long work_cycle;
+  long user_cycle;
+  long combiner_cycle;
+} thread_cycle_t;
+
 typedef struct {
     task_t          task;
     queue_elem_t    queue_elem;
@@ -243,7 +250,8 @@ map_reduce_init ()
 int
 map_reduce (map_reduce_args_t * args)
 {
-    struct timeval begin, end;
+    // struct timeval begin, end;
+    long cbegin, cend;
     mr_env_t* env;
 
     assert (args != NULL);
@@ -252,7 +260,8 @@ map_reduce (map_reduce_args_t * args)
     assert (args->unit_size > 0);
     assert (args->result != NULL);
 
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
 
     /* Initialize environment. */
     env = env_init (args);
@@ -260,7 +269,7 @@ map_reduce (map_reduce_args_t * args)
        /* could not allocate environment */
        return -1;
     }
-    //env_print (env);
+    env_print (env);
     env->taskQueue = tq_init (env->num_map_threads);
     assert (env->taskQueue != NULL);
 
@@ -283,50 +292,64 @@ map_reduce (map_reduce_args_t * args)
 
     pthread_setspecific (env_key, env);
 
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    fprintf (stderr, "library init: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "library init: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "library init: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
     /* Run map tasks and get intermediate values. */
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
     map (env);
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    fprintf (stderr, "map phase: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "map phase: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "map phase: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
     dprintf("In scheduler, all map tasks are done, now scheduling reduce tasks\n");
     
     /* Run reduce tasks and get final values. */
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
     reduce (env);
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    fprintf (stderr, "reduce phase: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "reduce phase: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "reduce phase: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
     dprintf("In scheduler, all reduce tasks are done, now scheduling merge tasks\n");
 
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
     merge (env);
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    fprintf (stderr, "merge phase: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "merge phase: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "merge phase: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
     /* Cleanup. */
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
     env_fini(env);
     CHECK_ERROR (pthread_key_delete (env_key));
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    fprintf (stderr, "library finalize: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "library finalize: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "library finalize: %lu cycles\n", cycles_diff (cend, cbegin));
     CHECK_ERROR (pthread_key_delete (emit_time_key));
 #endif
 
@@ -568,15 +591,19 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     thread_arg_t    **th_arg_array;
     void            **rets;
 #ifdef TIMING0
-    uint64_t        work_time = 0;
-    uint64_t        user_time = 0;
-    uint64_t        combiner_time = 0;
+    // uint64_t        work_time = 0;
+    // uint64_t        user_time = 0;
+    // uint64_t        combiner_time = 0;
+    long work_cycle = 0;
+    long user_cycle = 0;
+    long combiner_cycle = 0;
 #endif
 
     assert(th_arg != NULL);
 
     task_type = th_arg->task_type;
     num_threads = getNumTaskThreads (env, task_type);
+    fprintf(stderr, "num threads:%d\n", num_threads);
 
     env->tinfo = (thread_info_t *)mem_calloc (
         num_threads, sizeof (thread_info_t));
@@ -604,11 +631,16 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
 
     ret_val = (intptr_t)start_my_work (th_arg_array[0]);
 #ifdef TIMING0
-    thread_timing_t *timing = (thread_timing_t *)ret_val;
-    work_time += timing->work_time;
-    user_time += timing->user_time;
-    combiner_time += timing->combiner_time;
-    mem_free (timing);
+    // thread_timing_t *timing = (thread_timing_t *)ret_val;
+    // work_time += timing->work_time;
+    // user_time += timing->user_time;
+    // combiner_time += timing->combiner_time;
+    thread_cycle_t *cycling = (thread_cycle_t*)ret_val;
+    work_cycle += cycling->work_cycle;
+    fprintf(stderr, "work cycle %lu\n", cycling->work_cycle);
+    user_cycle += cycling->user_cycle;
+    combiner_cycle += cycling->combiner_cycle;
+    mem_free (cycling);
 #endif
     mem_free (th_arg_array[0]);
 
@@ -620,11 +652,11 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     {
 #ifdef TIMING0
         ret_val = (intptr_t)rets[thread_index - 1];
-        thread_timing_t *timing = (thread_timing_t *)ret_val;
-        work_time += timing->work_time;
-        user_time += timing->user_time;
-        combiner_time += timing->combiner_time;
-        mem_free (timing);
+        thread_cycle_t *cycling = (thread_cycle_t*)ret_val;
+        work_cycle += cycling->work_cycle;
+        user_cycle += cycling->user_cycle;
+        combiner_cycle += cycling->combiner_cycle;
+        mem_free (cycling);
 #endif
         mem_free (th_arg_array[thread_index]);
     }
@@ -633,27 +665,52 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     mem_free (rets);
 
 #ifdef TIMING0
+    // switch (task_type)
+    // {
+    //     case TASK_TYPE_MAP:
+    //         fprintf (stderr, "map work time: %" PRIu64 "\n",
+    //                                     work_time / num_threads);
+    //         fprintf (stderr, "map user time: %" PRIu64 "\n", 
+    //                                     user_time / num_threads);
+    //         fprintf (stderr, "map combiner time: %" PRIu64 "\n", 
+    //                                     combiner_time / num_threads);
+    //         break;
+
+    //     case TASK_TYPE_REDUCE:
+    //         fprintf (stderr, "reduce work time: %" PRIu64 "\n",
+    //                                     work_time / num_threads);
+    //         fprintf (stderr, "reduce user time: %" PRIu64 "\n", 
+    //                                     user_time / num_threads);
+    //         break;
+
+    //     case TASK_TYPE_MERGE:
+    //         fprintf (stderr, "merge work time: %" PRIu64 "\n",
+    //                                     work_time / num_threads);
+
+    //     default:
+    //         break;
+    // }
     switch (task_type)
     {
         case TASK_TYPE_MAP:
-            fprintf (stderr, "map work time: %" PRIu64 "\n",
-                                        work_time / num_threads);
-            fprintf (stderr, "map user time: %" PRIu64 "\n", 
-                                        user_time / num_threads);
-            fprintf (stderr, "map combiner time: %" PRIu64 "\n", 
-                                        combiner_time / num_threads);
+            fprintf (stderr, "map work cycle: %" PRIu64 "\n",
+                                        work_cycle / num_threads);
+            fprintf (stderr, "map user cycle: %" PRIu64 "\n", 
+                                        user_cycle / num_threads);
+            fprintf (stderr, "map combiner cycle: %" PRIu64 "\n", 
+                                        combiner_cycle / num_threads);
             break;
 
         case TASK_TYPE_REDUCE:
-            fprintf (stderr, "reduce work time: %" PRIu64 "\n",
-                                        work_time / num_threads);
-            fprintf (stderr, "reduce user time: %" PRIu64 "\n", 
-                                        user_time / num_threads);
+            fprintf (stderr, "reduce work cycle: %" PRIu64 "\n",
+                                        work_cycle / num_threads);
+            fprintf (stderr, "reduce user cycle: %" PRIu64 "\n", 
+                                        user_cycle / num_threads);
             break;
 
         case TASK_TYPE_MERGE:
-            fprintf (stderr, "merge work time: %" PRIu64 "\n",
-                                        work_time / num_threads);
+            fprintf (stderr, "thread %d merge work cycle: %" PRIu64 "\n",
+                                        th_arg->thread_id, work_cycle / num_threads);
 
         default:
             break;
@@ -665,8 +722,9 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
 }
 
 typedef struct {
-    uint64_t            run_time;
-    int                 lgrp;
+    // uint64_t            run_time;
+    long run_cycle;
+    int lgrp;
 } map_worker_task_args_t;
 
 /**
@@ -676,7 +734,8 @@ typedef struct {
 static bool map_worker_do_next_task (
     mr_env_t *env, int thread_index, map_worker_task_args_t *args)
 {
-    struct timeval  begin, end;
+    // struct timeval  begin, end;
+    long cbegin, cend;
     int             alloc_len;
     int             curr_task;
     task_t          map_task;
@@ -703,12 +762,15 @@ static bool map_worker_do_next_task (
     dprintf("Task %d: cpu_id -> %d - Started\n", curr_task, th_arg->cpu_id);
 
     /* Perform map task. */
-    get_time0 (&begin);
-    env->map (&thread_func_arg);
-    get_time0 (&end);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
+    env->map(&thread_func_arg);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    args->run_time = time_diff (&end, &begin);
+    // args->run_time = time_diff (&end, &begin);
+    args->run_cycle = cycles_diff(cend, cbegin);
 #endif
 
     dprintf("Task %d: cpu_id -> %d - Done\n", curr_task, th_arg->cpu_id);
@@ -728,17 +790,22 @@ map_worker (void *args)
 {
     assert (args != NULL);
 
-    struct timeval          begin, end;
-    struct timeval          work_begin, work_end;
-    uintptr_t               user_time = 0;
-    thread_arg_t            *th_arg = (thread_arg_t *)args;
+    // struct timeval          begin, end;
+    // struct timeval          work_begin, work_end;
+    long work_cbegin, work_cend;
+    long cbegin, cend;
+    // uintptr_t               user_time = 0;
+    long user_cycle = 0;
+    thread_arg_t *th_arg = (thread_arg_t *)args;
     mr_env_t                *env = th_arg->env;
     int                     thread_index = th_arg->thread_id;
     int                     num_assigned = 0;
     map_worker_task_args_t  mwta;
 #ifdef TIMING0
-    uintptr_t               work_time = 0;
-    uintptr_t               combiner_time = 0;
+    // uintptr_t               work_time = 0;
+    // uintptr_t               combiner_time = 0;
+    long work_cycle = 0;
+    long combiner_cycle = 0;
 #endif
 
     env->tinfo[thread_index].tid = pthread_self();
@@ -753,18 +820,23 @@ map_worker (void *args)
 
     mwta.lgrp = loc_get_lgrp();
 
-    get_time0 (&work_begin);
-    while (map_worker_do_next_task (env, thread_index, &mwta)) {
-        user_time += mwta.run_time;
-        num_assigned++;
+    // get_time0 (&work_begin);
+    work_cbegin = get_cycles();
+    while (map_worker_do_next_task(env, thread_index, &mwta)) {
+      user_cycle += mwta.run_cycle;
+      num_assigned++;
     }
-    get_time0 (&work_end);
+    // get_time0 (&work_end);
+    work_cend = get_cycles();
 
 #ifdef TIMING0
-    work_time = time_diff (&work_end, &work_begin);
+    // work_time = time_diff (&work_end, &work_begin);
+    work_cycle = cycles_diff(work_cend, work_cbegin);
+
 #endif
 
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
 
     /* Apply combiner to local map results. */
 #ifndef INCREMENTAL_COMBINER
@@ -772,10 +844,12 @@ map_worker (void *args)
         run_combiner (env, thread_index);
 #endif
 
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    combiner_time = time_diff (&end, &begin);
+    // combiner_time = time_diff (&end, &begin);
+    combiner_cycle = cycles_diff(cend, cbegin);
 #endif
 
     dprintf("Status: Total of %d tasks were assigned to cpu_id %d\n", 
@@ -785,12 +859,18 @@ map_worker (void *args)
     CHECK_ERROR (proc_unbind_thread () != 0);
 
 #ifdef TIMING0
-    thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
-    uintptr_t emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
-    timing->user_time = user_time - emit_time;
-    timing->work_time = work_time - timing->user_time;
-    timing->combiner_time = combiner_time;
-    return (void *)timing;
+    // thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
+    // uintptr_t emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
+    // timing->user_time = user_time - emit_time;
+    // timing->work_time = work_time - timing->user_time;
+    // timing->combiner_time = combiner_time;
+    // fprintf(stderr, "emit_time:%lu user_time:%lu work_time:%lu combiner_time:%lu\n", emit_time, timing->user_time, timing->work_time, timing->combiner_time);
+    thread_cycle_t *cycling = calloc(1, sizeof (thread_cycle_t));
+    long emit_cycle = (long) pthread_getspecific(emit_time_key);
+    cycling->user_cycle = user_cycle - emit_cycle;
+    cycling->work_cycle = work_cycle - cycling->user_cycle;
+    cycling->combiner_cycle = combiner_cycle;
+    return (void *)cycling;
 #else
     return (void *)0;
 #endif
@@ -798,8 +878,9 @@ map_worker (void *args)
 
 typedef struct {
     struct iterator_t   itr;
-    uint64_t            run_time;
-    int                 num_map_threads;
+    // uint64_t            run_time;
+    long run_cycle;
+    int num_map_threads;
     int                 lgrp;
 } reduce_worker_task_args_t;
 
@@ -811,8 +892,9 @@ typedef struct {
 static bool reduce_worker_do_next_task (
     mr_env_t *env, int thread_index, reduce_worker_task_args_t *args)
 {
-    struct timeval  begin, end;
-    intptr_t        curr_reduce_task = 0;
+    // struct timeval  begin, end;
+    long cbegin, cend;
+    intptr_t curr_reduce_task = 0;
     keyvals_t       *min_key_val, *next_min;
     task_t          reduce_task;
     int             num_map_threads;
@@ -831,7 +913,7 @@ static bool reduce_worker_do_next_task (
 
     num_map_threads =  args->num_map_threads;
 
-    args->run_time = 0;
+    args->run_cycle = 0;
     min_key_val = NULL;
     next_min = NULL;
 
@@ -873,11 +955,14 @@ static bool reduce_worker_do_next_task (
             keyvals_t       *curr_key_val;
 
             if (env->reduce != identity_reduce) {
-                get_time0 (&begin);
-                env->reduce (min_key_val->key, &args->itr);
-                get_time0 (&end);
+                // get_time0 (&begin);
+                cbegin = get_cycles();
+                env->reduce(min_key_val->key, &args->itr);
+                // get_time0 (&end);
+                cend = get_cycles();
 #ifdef TIMING0
-                args->run_time += time_diff (&end, &begin);
+                // args->run_time += time_diff (&end, &begin);
+                args->run_cycle = cycles_diff(cend, cbegin);
 #endif
             } else {
                 env->reduce (min_key_val->key, &args->itr);
@@ -927,15 +1012,18 @@ reduce_worker (void *args)
 {
     assert(args != NULL);
 
-    struct timeval              work_begin, work_end;
-    uintptr_t                   user_time = 0;
+    // struct timeval              work_begin, work_end;
+    // uintptr_t                   user_time = 0;
+    long work_cbegin, work_cend;
+    long user_cycle = 0;
     thread_arg_t                *th_arg = (thread_arg_t *)args;
     int                         thread_index = th_arg->thread_id;
     mr_env_t                    *env = th_arg->env;
     reduce_worker_task_args_t   rwta;
     int                         num_map_threads;
 #ifdef TIMING0
-    uintptr_t                   work_time = 0;
+    // uintptr_t                   work_time = 0;
+    long work_cycle = 0;
 #endif
 
     env->tinfo[thread_index].tid = pthread_self();
@@ -958,16 +1046,19 @@ reduce_worker (void *args)
     rwta.num_map_threads = num_map_threads;
     rwta.lgrp = loc_get_lgrp();
 
-    get_time0 (&work_begin);
+    // get_time0 (&work_begin);
+    work_cbegin = get_cycles();
 
-    while (reduce_worker_do_next_task (env, thread_index, &rwta)) {
-        user_time += rwta.run_time;
+    while (reduce_worker_do_next_task(env, thread_index, &rwta)) {
+      user_cycle += rwta.run_cycle;
     }
 
-    get_time0 (&work_end);
+    // get_time0 (&work_end);
+    work_cend = get_cycles();
 
 #ifdef TIMING0
-    work_time = time_diff (&work_end, &work_begin);
+    // work_time = time_diff (&work_end, &work_begin);
+    work_cycle = cycles_diff(work_cend, work_cbegin);
 #endif
 
     iter_finalize (&rwta.itr);
@@ -976,11 +1067,18 @@ reduce_worker (void *args)
     CHECK_ERROR (proc_unbind_thread () != 0);
 
 #ifdef TIMING0
-    thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
-    uintptr_t emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
-    timing->user_time = user_time - emit_time;
-    timing->work_time = work_time - timing->user_time;
-    return (void *)timing;
+    // thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
+    // uintptr_t emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
+    // timing->user_time = user_time - emit_time;
+    // timing->work_time = work_time - timing->user_time;
+    thread_cycle_t *cycling = calloc(1, sizeof (thread_cycle_t));
+    long emit_cycle = (long) pthread_getspecific(emit_time_key);
+    // fprintf(stderr, "emit time key %lu val %lu\n", emit_time_key, emit_cycle);
+    cycling->user_cycle = user_cycle - emit_cycle;
+    cycling->work_cycle = work_cycle - cycling->user_cycle;
+    // fprintf(stderr, "reduce %lu %lu %lu work cycle:%lu user cycle:%lu\n", emit_cycle, user_cycle, work_cycle, cycling->work_cycle, cycling->user_cycle);
+    // cycling->combiner_cycle = combiner_cycle;
+    return (void *)cycling;
 #else
     return (void *)0;
 #endif
@@ -995,13 +1093,15 @@ merge_worker (void *args)
 {
     assert(args != NULL);
 
-    struct timeval  work_begin, work_end;
+    // struct timeval  work_begin, work_end;
+    long          work_cbegin, work_cend;
     thread_arg_t    *th_arg = (thread_arg_t *)args;
     int             thread_index = th_arg->thread_id;
     mr_env_t        *env = th_arg->env;
     int             cpu;
 #ifdef TIMING0
-    uintptr_t       work_time = 0;
+    // uintptr_t       work_time = 0;
+    long work_cycle = 0;
 #endif
 
     env->tinfo[thread_index].tid = pthread_self();
@@ -1037,12 +1137,15 @@ merge_worker (void *args)
         dprintf("Thread %d: cpu_id -> %d - Started\n", 
                     thread_index, th_arg->cpu_id);
 
-        get_time0 (&work_begin);
-        merge_results (th_arg->env, vals, length + (thread_index < modlen));
-        get_time0 (&work_end);
+        // get_time0 (&work_begin);
+        work_cbegin = get_cycles();
+        merge_results(th_arg->env, vals, length + (thread_index < modlen));
+        // get_time0 (&work_end);
+        work_cend = get_cycles();
 
 #ifdef TIMING0
-        work_time = time_diff (&work_end, &work_begin);
+        // work_time = time_diff (&work_end, &work_begin);
+        work_cycle = cycles_diff(work_cend, work_cbegin);
 #endif
 
         dprintf("Thread %d: cpu_id -> %d - Done\n", 
@@ -1053,9 +1156,12 @@ merge_worker (void *args)
     CHECK_ERROR (proc_unbind_thread () != 0);
 
 #ifdef TIMING0
-    thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
-    timing->work_time = work_time;
-    return (void *)timing;
+    // thread_timing_t *timing = calloc (1, sizeof (thread_timing_t));
+    // timing->work_time = work_time;
+    thread_cycle_t *cycling = calloc(1, sizeof (thread_cycle_t));
+    long emit_cycle = (long) pthread_getspecific(emit_time_key);
+    cycling->work_cycle = work_cycle;
+    return (void *)cycling;
 #else
     return (void *)0;
 #endif
@@ -1352,14 +1458,16 @@ static void run_combiner (mr_env_t* env, int thread_index)
 void 
 emit_intermediate (void *key, void *val, int key_size)
 {
-    struct timeval  begin, end;
+    // struct timeval  begin, end;
+    long cend, cbegin;
     static __thread int curr_thread = -1;
     int             curr_task;
     bool            oneOutputQueuePerMapTask;
     keyvals_arr_t   *arr;
     mr_env_t        *env;
 
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
 
     env = get_env();
     if (curr_thread < 0)
@@ -1380,13 +1488,19 @@ emit_intermediate (void *key, void *val, int key_size)
 
     insert_keyval_merged (env, arr, key, val);
 
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    uintptr_t total_emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
-    uintptr_t emit_time = time_diff (&end, &begin);
-    total_emit_time += emit_time;
-    CHECK_ERROR (pthread_setspecific (emit_time_key, (void *)total_emit_time));
+    // uintptr_t total_emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
+    // uintptr_t emit_time = time_diff (&end, &begin);
+    // total_emit_time += emit_time;
+    // CHECK_ERROR (pthread_setspecific (emit_time_key, (void *)total_emit_time));
+    long total_emit_cycle = (long)pthread_getspecific(emit_time_key);
+    long emit_cycle = cycles_diff(cend, cbegin);
+    total_emit_cycle += emit_cycle;
+
+    CHECK_ERROR (pthread_setspecific (emit_time_key, (void *)total_emit_cycle));
 #endif
 }
 
@@ -1420,19 +1534,27 @@ emit_inline (mr_env_t* env, void *key, void *val)
 void
 emit (void *key, void *val)
 {
-    struct timeval begin, end;
+    // struct timeval begin, end;
+    long cbegin, cend;
 
-    get_time0 (&begin);
+    // get_time0 (&begin);
+    cbegin = get_cycles();
 
     emit_inline (get_env(), key, val);
 
-    get_time0 (&end);
+    // get_time0 (&end);
+    cend = get_cycles();
 
 #ifdef TIMING0
-    uintptr_t total_emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
-    uintptr_t emit_time = time_diff (&end, &begin);
-    total_emit_time += emit_time;
-    CHECK_ERROR (pthread_setspecific (emit_time_key, (void *)total_emit_time));
+    // uintptr_t total_emit_time = (uintptr_t)pthread_getspecific (emit_time_key);
+    // uintptr_t emit_time = time_diff (&end, &begin);
+    // total_emit_time += emit_time;
+    // CHECK_ERROR (pthread_setspecific (emit_time_key, (void *)total_emit_time));
+    long total_emit_cycle = (long)pthread_getspecific(emit_time_key);
+    long emit_cycle = cycles_diff(cend, cbegin);
+    total_emit_cycle += emit_cycle;
+    fprintf(stderr, "set emit cycle %lu %lu\n", total_emit_cycle, emit_cycle);
+    CHECK_ERROR(pthread_setspecific(emit_time_key, (void *)total_emit_cycle));
 #endif
 }
 
@@ -1799,9 +1921,12 @@ static void map (mr_env_t* env)
 {
     thread_arg_t   th_arg;
     int            num_map_tasks;
-
-    num_map_tasks = gen_map_tasks (env);
-    assert (num_map_tasks >= 0);
+    long cbegin, cend;
+    cbegin = get_cycles();
+    num_map_tasks = gen_map_tasks(env);
+    cend = get_cycles();
+    fprintf(stderr, "gen map tasks %lu cycles\n", cycles_diff(cend, cbegin));
+    assert(num_map_tasks >= 0);
 
     env->num_map_tasks = num_map_tasks;
     if (num_map_tasks < env->num_map_threads)
@@ -1812,7 +1937,10 @@ static void map (mr_env_t* env)
     mem_memset (&th_arg, 0, sizeof(thread_arg_t));
     th_arg.task_type = TASK_TYPE_MAP;
 
+    cbegin = get_cycles();
     start_workers (env, &th_arg);
+    cend = get_cycles();
+    fprintf(stderr, "start worker %lu cycles\n", cycles_diff(cend, cbegin));
 }
 
 /**
