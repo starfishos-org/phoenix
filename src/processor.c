@@ -48,26 +48,31 @@
 
 #ifdef _CHCORE_
 #include <chcore/syscall.h>
-
-#define PHOENIX_CPU_NUM (1)
-bool out = false;
 #endif
+
+int thread_num = 0;
+
+#define info_once(fmt, ...) do {  \
+	static int __warned = 0;  \
+	if (__warned) break;      \
+	__warned = 1;             \
+	printf(fmt, ##__VA_ARGS__);    \
+} while (0)
 
 /* Query the number of CPUs online. */
 int proc_get_num_cpus (void)
 {
-#ifdef _CHCORE_
-    if (out == false) {
-      printf("phoenix cpu num=%d\n", PHOENIX_CPU_NUM);
-      out = true;
-    }
-  
-    return PHOENIX_CPU_NUM;
-#else
     int num_cpus;
     char *num_proc_str;
 
     num_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+
+    if (thread_num > 0) {
+        /* FIXME(FN): need to check whelther it exceed max cpu number*/
+        /* but in chcore, sysconf is not implemented */
+        num_cpus = thread_num;
+        goto out;
+    }
 
     /* Check if the user specified a different number of processors. */
     if ((num_proc_str = getenv("MAPRED_NPROCESSORS")))
@@ -79,8 +84,9 @@ int proc_get_num_cpus (void)
             num_cpus = temp;
     }
 
+out:
+    info_once("phoenix cpu num=%d\n", num_cpus);
     return num_cpus;
-#endif
 }
 
 #ifdef _LINUX_
