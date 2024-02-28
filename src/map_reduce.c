@@ -81,6 +81,8 @@
 #define MAX(X,Y) ((X) > (Y) ? (X) : (Y))
 #define OUT_PREFIX "[Phoenix] "
 
+long map_cycle = 0, reduce_cycle = 0, merge_cycle = 0, finalize_cycle = 0;
+
 /* A key and a value pair. */
 typedef struct 
 {
@@ -203,6 +205,8 @@ typedef struct
     mr_env_t        *env;
 } thread_arg_t;
 
+// extern volatile long compute_sum, emit_sum, malloc_sum, free_sum;
+
 static inline mr_env_t* env_init (map_reduce_args_t *);
 static void env_fini(mr_env_t* env);
 static inline void env_print (mr_env_t* env);
@@ -309,7 +313,8 @@ map_reduce (map_reduce_args_t * args)
 
 #ifdef TIMING0
     // fprintf (stderr, "map phase: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "map phase: %lu cycles\n", cycles_diff (cend, cbegin));
+    map_cycle += cycles_diff (cend, cbegin);
+    fprintf (stderr, "map phase: %ld cycles\n", map_cycle);
 #endif
 
     dprintf("In scheduler, all map tasks are done, now scheduling reduce tasks\n");
@@ -323,7 +328,8 @@ map_reduce (map_reduce_args_t * args)
 
 #ifdef TIMING0
     // fprintf (stderr, "reduce phase: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "reduce phase: %lu cycles\n", cycles_diff (cend, cbegin));
+    reduce_cycle += cycles_diff (cend, cbegin);
+    fprintf (stderr, "reduce phase: %ld cycles\n", reduce_cycle);
 #endif
 
     dprintf("In scheduler, all reduce tasks are done, now scheduling merge tasks\n");
@@ -336,7 +342,8 @@ map_reduce (map_reduce_args_t * args)
 
 #ifdef TIMING0
     // fprintf (stderr, "merge phase: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "merge phase: %lu cycles\n", cycles_diff (cend, cbegin));
+    merge_cycle += cycles_diff (cend, cbegin);
+    fprintf (stderr, "merge phase: %ld cycles\n", merge_cycle);
 #endif
 
     /* Cleanup. */
@@ -349,7 +356,8 @@ map_reduce (map_reduce_args_t * args)
 
 #ifdef TIMING0
     // fprintf (stderr, "library finalize: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "library finalize: %lu cycles\n", cycles_diff (cend, cbegin));
+    finalize_cycle += cycles_diff (cend, cbegin);
+    fprintf (stderr, "library finalize phase: %ld cycles\n", finalize_cycle);
     CHECK_ERROR (pthread_key_delete (emit_time_key));
 #endif
 
@@ -645,7 +653,9 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     mem_free (th_arg_array[0]);
 
     /* Barrier, wait for all threads to finish. */
+    fprintf(stderr, "waiting all threads to finish\n");
     CHECK_ERROR (tpool_wait (env->tpool));
+    fprintf(stderr, "all threads to finished\n");
     rets = tpool_get_results (env->tpool);
 
     for (thread_index = 1; thread_index < num_threads; ++thread_index)
@@ -1412,8 +1422,12 @@ static void run_combiner (mr_env_t* env, int thread_index)
     void *reduced_val;
     iterator_t itr;
     val_t *val, *next;
+    long cbegin, cend;
 
+    // cbegin = get_cycles();
     CHECK_ERROR (iter_init (&itr, 1));
+    // cend = get_cycles();
+    // malloc_sum += cycles_diff(cend, cbegin);
 
     for (i = 0; i < env->num_reduce_tasks; ++i)
     {
@@ -1937,10 +1951,9 @@ static void map (mr_env_t* env)
     mem_memset (&th_arg, 0, sizeof(thread_arg_t));
     th_arg.task_type = TASK_TYPE_MAP;
 
-    cbegin = get_cycles();
     start_workers (env, &th_arg);
-    cend = get_cycles();
-    fprintf(stderr, "start worker %lu cycles\n", cycles_diff(cend, cbegin));
+    long emit_cycle = (long)pthread_getspecific(emit_time_key);
+    fprintf(stderr, "emit:%lu cycle \n", emit_cycle);
 }
 
 /**
@@ -1958,6 +1971,8 @@ static void reduce (mr_env_t* env)
 
     start_workers (env, &th_arg);
 
+    long emit_cycle = (long)pthread_getspecific(emit_time_key);
+    fprintf(stderr, "emit:%lu cycle \n", emit_cycle);
     /* Cleanup intermediate results. */
     for (i = 0; i < env->intermediate_task_alloc_len; ++i)
     {
@@ -2004,6 +2019,8 @@ static void merge (mr_env_t* env)
 
         /* Run merge tasks and get merge values. */
         start_workers (env, &th_arg);
+        long emit_cycle = (long)pthread_getspecific(emit_time_key);
+        fprintf(stderr, "emit:%lu cycle \n", emit_cycle);
 
         mem_free (th_arg.merge_input);
         th_arg.merge_len = env->num_merge_threads;

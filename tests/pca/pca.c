@@ -71,6 +71,7 @@ int num_rows;
 int num_cols;
 int grid_size;
 extern int thread_num;
+volatile long compute_sum = 0, emit_sum = 0, malloc_sum = 0, free_sum = 0;
 
 /** parse_args()
  *  Parse the user arguments to determine the number of rows and colums
@@ -219,17 +220,23 @@ void pca_mean_map(map_args_t *args)
     int i, j;
     pca_map_data_t *data = (pca_map_data_t *)args->data;
     int *matrix = data->matrix;
-    
+    long cbegin, cend;
     /* Compute the mean for the allocated rows to the map task */
     for (i=0; i<args->length; i++) 
     {
+        cbegin = get_cycles();
         sum = 0;
         for (j=0; j<num_cols; j++) 
         {
             sum += matrix[i * num_cols + j]; 
         }
         mean = sum / num_cols;
+        cend = get_cycles();
+        compute_sum += cycles_diff(cend, cbegin);
+        cbegin = get_cycles();
         emit_intermediate((void *)&matrix[i * num_cols], (void *)mean, sizeof(int *));
+        cend = get_cycles();
+        emit_sum += cycles_diff(cend, cbegin);
     }
     
     free(data);
@@ -341,6 +348,7 @@ void pca_cov_map(map_args_t *args)
     int sum;
     intptr_t covariance;
     intptr_t m1, m2;
+    long cbegin, cend;
     
     pca_cov_data_t *cov_data = (pca_cov_data_t *)args->data;
     mean = cov_data->mean;
@@ -349,6 +357,7 @@ void pca_cov_map(map_args_t *args)
     /* compute the covariance for the allocated region */
     for (i=0; i<cov_data->size; i++) 
     {
+        cbegin = get_cycles();
         start_idx = cov_data->cov_locs[i].start_row;
         cov_idx = cov_data->cov_locs[i].cov_row;
         assert(cov_idx >= start_idx);
@@ -368,11 +377,21 @@ void pca_cov_map(map_args_t *args)
         covariance = sum / (num_rows-1);
         
         //dprintf("Covariance for <%d, %d> is %d\n", start_idx, cov_idx, *covariance);
-        
+        cend = get_cycles();
+        compute_sum += cycles_diff(cend, cbegin);
+        cbegin = get_cycles();
         CHECK_ERROR((cov_loc = (pca_cov_loc_t *)malloc(sizeof(pca_cov_loc_t))) == NULL);
+        cend = get_cycles();
+        malloc_sum += cycles_diff(cend, cbegin);
+        cbegin = get_cycles();
         cov_loc->start_row = cov_data->cov_locs[i].start_row;
         cov_loc->cov_row = cov_data->cov_locs[i].cov_row;
+        cend = get_cycles();
+        compute_sum += cycles_diff(cend, cbegin);
+        cbegin = get_cycles();
         emit_intermediate((void *)cov_loc, (void *)covariance, sizeof(pca_cov_loc_t));
+        cend = get_cycles();
+        emit_sum += cycles_diff(cend, cbegin);
     }
     
     free(cov_data->cov_locs);
@@ -554,6 +573,9 @@ int main(int argc, char **argv)
     // fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
     fprintf (stderr, "finalize: %lu cycles\n", cycles_diff (cend, cbegin));
     fprintf (stderr, "sum: %lu cycles\n", cycles_diff (sum_cend, sum_cbegin));
+    fprintf (stderr, "compute: %lu cycles\n", compute_sum);
+    fprintf (stderr, "emit %lu cycles\n", emit_sum);
+    fprintf (stderr, "malloc %lu cycles\n", malloc_sum);
 #endif
 
     return 0;

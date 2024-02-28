@@ -33,7 +33,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define _CHCORE_
+// #define _CHCORE_
 
 #define TIMING
 #define TIMING0
@@ -121,7 +121,7 @@ static inline void get_time0 (struct timeval *t)
 #endif
 }
 
-static inline int get_cycles(void)
+static inline long get_cycles(void)
 {
 #ifdef TIMING
    unsigned int lo, hi;
@@ -135,7 +135,12 @@ static inline long cycles_diff(long end, long begin)
 {
 #ifdef TIMING
    // static long kilo = (1 << 10);
-   return (end - begin);
+  if (end >= begin)
+   {
+      return end - begin;
+   }
+   
+   return UINT64_MAX - (end - begin);
 #endif
 }
 
