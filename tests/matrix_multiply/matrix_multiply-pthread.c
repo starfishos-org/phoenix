@@ -128,7 +128,7 @@ void *matrixmult_map(void *args_in)
 
     int row_count = 0;
     int i,j, x_loc, value;
-    [[maybe_unused]] int y_loc;
+    // int y_loc;
     int * a_ptr,* b_ptr;    
 
     assert(args);
@@ -151,7 +151,7 @@ void *matrixmult_map(void *args_in)
 			    b_ptr+= data->matrix_len;
 		    }
 		    x_loc = (data->row_num + row_count);
-		    y_loc = i;
+		    // y_loc = i;
 		    //printf("THe location is %d %d, value is %d\n",x_loc, y_loc, value);
 		    data->output[x_loc*data->matrix_len + i] = value;
 	    }

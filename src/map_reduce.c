@@ -677,16 +677,16 @@ static bool map_worker_do_next_task (
     mr_env_t *env, int thread_index, map_worker_task_args_t *args)
 {
     struct timeval  begin, end;
-    [[maybe_unused]] int             alloc_len;
+    // int             alloc_len;
     int             curr_task;
     task_t          map_task;
     map_args_t      thread_func_arg;
-    [[maybe_unused]] bool            oneOutputQueuePerMapTask;
+    // bool            oneOutputQueuePerMapTask;
     int             lgrp = args->lgrp;
 
-    oneOutputQueuePerMapTask = env->oneOutputQueuePerMapTask;
+    // oneOutputQueuePerMapTask = env->oneOutputQueuePerMapTask;
 
-    alloc_len = env->intermediate_task_alloc_len;
+    // alloc_len = env->intermediate_task_alloc_len;
 
     /* Get new map task. */
     if (tq_dequeue (env->taskQueue, &map_task, lgrp, thread_index) == 0) {

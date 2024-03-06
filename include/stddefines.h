@@ -127,6 +127,8 @@ static inline uint64_t get_cycles(void)
    unsigned int lo, hi;
 	asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
 	return (((uint64_t)hi) << 32) | lo;
+#else
+   return 0;
 #endif
 }
 
@@ -139,7 +141,10 @@ static inline uint64_t cycles_diff(uint64_t end, uint64_t begin)
    }
    
    return UINT64_MAX - (end - begin);
+#else
+   return 0;
 #endif
+   
 }
 
 #endif // STDDEFINES_H_

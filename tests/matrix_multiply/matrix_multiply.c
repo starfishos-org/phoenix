@@ -144,7 +144,7 @@ void matrixmult_map(map_args_t *args)
 {
     int row_count = 0;
     int i,j, x_loc, value;
-    [[maybe_unused]] int y_loc;
+    // int y_loc;
     int * a_ptr,* b_ptr;    
 
     assert(args);
@@ -171,7 +171,7 @@ void matrixmult_map(map_args_t *args)
                     b_ptr+= data->matrix_len;
             }
             x_loc = (data->row_num + row_count);
-            y_loc = i;
+            // y_loc = i;
             data->output[x_loc*data->matrix_len + i] = value;
             /* fflush(stdout); */
         }
