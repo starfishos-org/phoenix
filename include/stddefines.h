@@ -121,20 +121,18 @@ static inline void get_time0 (struct timeval *t)
 #endif
 }
 
-static inline long get_cycles(void)
+static inline uint64_t get_cycles(void)
 {
 #ifdef TIMING
    unsigned int lo, hi;
 	asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-	return (((unsigned long long)hi) << 32) | lo;
+	return (((uint64_t)hi) << 32) | lo;
 #endif
 }
 
-// unit: kilo
-static inline long cycles_diff(long end, long begin)
+static inline uint64_t cycles_diff(uint64_t end, uint64_t begin)
 {
 #ifdef TIMING
-   // static long kilo = (1 << 10);
   if (end >= begin)
    {
       return end - begin;

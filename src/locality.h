@@ -27,9 +27,9 @@
 #ifndef LOCALITY_H_
 #define LOCALITY_H_
 
-inline int loc_get_lgrp_size ();
-inline int loc_get_num_lgrps ();
-inline int loc_get_lgrp ();
-inline int loc_mem_to_lgrp (void *);
+int loc_get_lgrp_size ();
+int loc_get_num_lgrps ();
+int loc_get_lgrp ();
+int loc_mem_to_lgrp (void *);
 
 #endif /* LOCALITY_H_ */
