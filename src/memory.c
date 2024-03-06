@@ -39,7 +39,7 @@
 
 #include "memory.h"
 
-void *mem_malloc (size_t size)
+inline void *mem_malloc (size_t size)
 {
     void *temp = malloc (size);
     assert(temp);
@@ -47,7 +47,7 @@ void *mem_malloc (size_t size)
     return temp;
 }
 
-void *mem_malloc_here (size_t size)
+inline void *mem_malloc_here (size_t size)
 {
     void *temp = malloc (size);
     assert(temp);
@@ -55,7 +55,7 @@ void *mem_malloc_here (size_t size)
     return temp;
 }
 
-void *mem_calloc (size_t num, size_t size)
+inline void *mem_calloc (size_t num, size_t size)
 {
     void *temp = calloc (num, size);
     assert(temp);
@@ -63,7 +63,7 @@ void *mem_calloc (size_t num, size_t size)
     return temp;
 }
 
-void *mem_realloc (void *ptr, size_t size)
+inline void *mem_realloc (void *ptr, size_t size)
 {
     void *temp = realloc (ptr, size);
     assert(temp);
@@ -71,17 +71,17 @@ void *mem_realloc (void *ptr, size_t size)
     return temp;
 }
 
-void *mem_memcpy (void *dest, const void *src, size_t size)
+inline void *mem_memcpy (void *dest, const void *src, size_t size)
 {
     return memcpy (dest, src, size);
 }
 
-void *mem_memset (void *s, int c, size_t n)
+inline void *mem_memset (void *s, int c, size_t n)
 {
     return memset (s, c, n);
 }
 
-void mem_free (void *ptr)
+inline void mem_free (void *ptr)
 {
     free (ptr);
 }

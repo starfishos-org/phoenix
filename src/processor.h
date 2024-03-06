@@ -29,10 +29,10 @@
 
 #include <stdbool.h>
 
-extern inline int proc_get_num_cpus (void);
-extern inline int proc_bind_thread (int cpu_id);
-extern inline int proc_unbind_thread ();
-extern inline bool proc_is_available (int cpu_id);
-extern inline int proc_get_cpuid (void);
+extern int proc_get_num_cpus (void);
+extern int proc_bind_thread (int cpu_id);
+extern int proc_unbind_thread ();
+extern bool proc_is_available (int cpu_id);
+extern int proc_get_cpuid (void);
 
 #endif /* PROCESSOR_H_ */

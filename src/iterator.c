@@ -28,14 +28,15 @@
 
 #include "iterator.h"
 #include "memory.h"
+#include "stddefines.h"
 
-#if defined(_LINUX_)
+#if defined(_LINUX_) || defined (_CHCORE_)
 #include <stdlib.h>
 #endif
 
 typedef struct iterator_t iterator_t;
 
-int iter_init (iterator_t *itr, int num_lists)
+inline int iter_init (iterator_t *itr, int num_lists)
 {
     assert (itr);
     assert (num_lists > 0);
@@ -57,7 +58,7 @@ int iter_init (iterator_t *itr, int num_lists)
     return 0;
 }
 
-void iter_reset (iterator_t *itr)
+inline void iter_reset (iterator_t *itr)
 {
     assert (itr);
 
@@ -68,7 +69,7 @@ void iter_reset (iterator_t *itr)
     itr->size = 0;
 }
 
-void iter_rewind (iterator_t *itr)
+inline void iter_rewind (iterator_t *itr)
 {
     assert (itr);
 
@@ -77,7 +78,7 @@ void iter_rewind (iterator_t *itr)
     itr->val = itr->list_array[0]->vals;
 }
 
-void iter_finalize (iterator_t *itr)
+inline void iter_finalize (iterator_t *itr)
 {
     assert (itr);
     assert (itr->list_array);
@@ -85,7 +86,7 @@ void iter_finalize (iterator_t *itr)
     mem_free (itr->list_array);
 }
 
-int iter_add (iterator_t *itr, keyvals_t *list)
+inline int iter_add (iterator_t *itr, keyvals_t *list)
 {
     assert (itr);
     assert (list->len);
@@ -110,7 +111,7 @@ int iter_add (iterator_t *itr, keyvals_t *list)
 
 /* Returns 1 when element exists.
    Returns 0 when endpoint reached. */
-int iter_next (iterator_t *itr, void **addr)
+inline int iter_next (iterator_t *itr, void **addr)
 {
     assert (itr);
 
@@ -153,7 +154,7 @@ int iter_next (iterator_t *itr, void **addr)
     return 1;
 }
 
-int iter_next_list (iterator_t *itr, keyvals_t **list)
+inline int iter_next_list (iterator_t *itr, keyvals_t **list)
 {
     assert (itr);
 
@@ -167,7 +168,7 @@ int iter_next_list (iterator_t *itr, keyvals_t **list)
     return 1;
 }
 
-int iter_size (iterator_t *itr)
+inline int iter_size (iterator_t *itr)
 {
     assert (itr);
 

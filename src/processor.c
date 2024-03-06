@@ -34,6 +34,9 @@
 #include <sys/processor.h>
 #include <sys/lgrp_user.h>
 
+#elif defined (_CHCORE_)
+#include <chcore/syscall.h>
+
 #else
 #error OS not supported
 #endif
@@ -42,13 +45,10 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <stdio.h>
 
 #include "processor.h"
 #include "memory.h"
-
-#ifdef _CHCORE_
-#include <chcore/syscall.h>
-#endif
 
 int thread_num = 0;
 
@@ -60,7 +60,7 @@ int thread_num = 0;
 } while (0)
 
 /* Query the number of CPUs online. */
-int proc_get_num_cpus (void)
+inline int proc_get_num_cpus (void)
 {
     int num_cpus;
     char *num_proc_str;
@@ -114,14 +114,13 @@ static cpu_set_t* proc_get_full_set(void)
 
 /* Bind the calling thread to run on CPU_ID. 
    Returns 0 if successful, -1 if failed. */
-int proc_bind_thread (int cpu_id)
+inline int proc_bind_thread (int cpu_id)
 {
 #ifdef _CHCORE_
     int ret;
     ret = usys_set_affinity(-2, cpu_id);
     if (!ret) return ret;
-    ret = usys_yield();
-    if (!ret) return ret;
+    usys_yield();
     return 0;
 #elif defined (_LINUX_)
     cpu_set_t   cpu_set;
@@ -135,14 +134,13 @@ int proc_bind_thread (int cpu_id)
 #endif
 }
 
-int proc_unbind_thread ()
+inline int proc_unbind_thread ()
 {
 #ifdef _CHCORE_
-    // int ret;
-    // ret = usys_set_affinity(-1, NO_AFF);
-    // if (!ret) return ret;
-    // ret = usys_yield();
-    // if (!ret) return ret;
+    int ret;
+    ret = usys_set_affinity(-1, NO_AFF);
+    if (!ret) return ret;
+    usys_yield();
     return 0;
 #elif defined (_LINUX_)
     return sched_setaffinity (0, sizeof (cpu_set_t), proc_get_full_set());
@@ -152,9 +150,9 @@ int proc_unbind_thread ()
 }
 
 /* Test whether processor CPU_ID is available. */
-bool proc_is_available (int cpu_id)
+inline bool proc_is_available (int cpu_id)
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     int ret;
     cpu_set_t cpu_set;
     
@@ -167,9 +165,9 @@ bool proc_is_available (int cpu_id)
 #endif
 }
 
-int proc_get_cpuid (void)
+inline int proc_get_cpuid (void)
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     int i, ret;
     cpu_set_t cpu_set;
     

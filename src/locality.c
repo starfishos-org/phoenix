@@ -31,7 +31,7 @@
 #include "stddefines.h"
 #include "processor.h"
 
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
 
 #elif defined (_SOLARIS_)
 #include <sys/lgrp_user.h>
@@ -43,9 +43,9 @@
 
 /* Retrieve the number of processors that belong to the locality
    group of the calling LWP. */
-int loc_get_lgrp_size ()
+inline int loc_get_lgrp_size ()
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     /* XXX smarter implementation? have all cpus local to this thread */
     return proc_get_num_cpus ();
 #elif defined (_SOLARIS_)
@@ -67,9 +67,9 @@ int loc_get_lgrp_size ()
 }
 
 /* Retrieve the number of total locality groups on system. */
-int loc_get_num_lgrps ()
+inline int loc_get_num_lgrps ()
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     /* XXX only one locality group, all processors */
     return 1;
 #elif defined (_SOLARIS_)
@@ -94,9 +94,9 @@ int loc_get_num_lgrps ()
 }
 
 /* Retrieve the locality group of the calling LWP. */
-int loc_get_lgrp ()
+inline int loc_get_lgrp ()
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     return 0;
 #elif defined (_SOLARIS_)
     int lgrp = lgrp_home (P_LWPID, P_MYID);
@@ -114,9 +114,9 @@ int loc_get_lgrp ()
 
 /* Retrieve the locality group of the physical memory that backs
    the virtual address ADDR. */
-int loc_mem_to_lgrp (void *addr)
+inline int loc_mem_to_lgrp (void *addr)
 {
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     /* XXX just one for now */
     return 0;
 #elif defined (_SOLARIS_)
