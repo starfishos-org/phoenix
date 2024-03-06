@@ -1,10 +1,10 @@
 *
-!*.c
-!*.h
+!**/*.c
+!**/*.h
 !/bin/
 !Makefile
 !/src/Makefile
-!/test/Makefile
+!/tests/Makefile
 !/data/
 !/data/*datafiles/
 !/data/*datafiles/*
