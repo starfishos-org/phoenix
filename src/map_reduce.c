@@ -677,11 +677,11 @@ static bool map_worker_do_next_task (
     mr_env_t *env, int thread_index, map_worker_task_args_t *args)
 {
     struct timeval  begin, end;
-    int             alloc_len;
+    [[maybe_unused]] int             alloc_len;
     int             curr_task;
     task_t          map_task;
     map_args_t      thread_func_arg;
-    bool            oneOutputQueuePerMapTask;
+    [[maybe_unused]] bool            oneOutputQueuePerMapTask;
     int             lgrp = args->lgrp;
 
     oneOutputQueuePerMapTask = env->oneOutputQueuePerMapTask;

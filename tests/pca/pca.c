@@ -393,7 +393,7 @@ int main(int argc, char **argv)
     struct timespec time1 = {0, 0};
     struct timespec time2 = {0, 0};
 #ifdef TIMING
-    unsigned int library_time = 0;
+    // unsigned int library_time = 0;
 #endif
     // start = clock();
     // gettimeofday(&begin1, NULL);
@@ -442,7 +442,7 @@ int main(int argc, char **argv)
     // get_time (&end);
 
 #ifdef TIMING
-    fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
+    // fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
 #endif
 
     // get_time (&begin);    
@@ -450,7 +450,7 @@ int main(int argc, char **argv)
     // get_time (&end);
 
 #ifdef TIMING
-    library_time += time_diff (&end, &begin);
+    // library_time += time_diff (&end, &begin);
 #endif
 
     // get_time (&begin);

@@ -127,7 +127,8 @@ void *matrixmult_map(void *args_in)
     map_args_t* args = (map_args_t*)args_in;
 
     int row_count = 0;
-    int i,j, x_loc, y_loc, value;
+    int i,j, x_loc, value;
+    [[maybe_unused]] int y_loc;
     int * a_ptr,* b_ptr;    
 
     assert(args);
@@ -214,7 +215,7 @@ int main(int argc, char *argv[]) {
 		    for(j=0;j<matrix_len;j++)
 		    {
 			    value = (rand())%11;
-			    write(fd_A,&value,sizeof(int));
+			    assert(write(fd_A,&value,sizeof(int)) != -1) ;
 			    dprintf("%d  ",value);
 		    }
 		    dprintf("\n");
@@ -226,7 +227,7 @@ int main(int argc, char *argv[]) {
 		    for(j=0;j<matrix_len;j++)
 		    {
 			    value = (rand())%11;
-			    write(fd_B,&value,sizeof(int));
+			    assert(write(fd_B,&value,sizeof(int)) != -1) ;
 			    dprintf("%d  ",value);
 		    }
 		    dprintf("\n");
