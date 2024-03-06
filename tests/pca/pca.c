@@ -34,6 +34,7 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
+#include <time.h>
 
 #include "stddefines.h"
 #include "map_reduce.h"
@@ -71,7 +72,6 @@ int num_rows;
 int num_cols;
 int grid_size;
 extern int thread_num;
-volatile long compute_sum = 0, emit_sum = 0, malloc_sum = 0, free_sum = 0;
 
 /** parse_args()
  *  Parse the user arguments to determine the number of rows and colums
@@ -220,23 +220,17 @@ void pca_mean_map(map_args_t *args)
     int i, j;
     pca_map_data_t *data = (pca_map_data_t *)args->data;
     int *matrix = data->matrix;
-    long cbegin, cend;
+    
     /* Compute the mean for the allocated rows to the map task */
     for (i=0; i<args->length; i++) 
     {
-        cbegin = get_cycles();
         sum = 0;
         for (j=0; j<num_cols; j++) 
         {
             sum += matrix[i * num_cols + j]; 
         }
         mean = sum / num_cols;
-        cend = get_cycles();
-        compute_sum += cycles_diff(cend, cbegin);
-        cbegin = get_cycles();
         emit_intermediate((void *)&matrix[i * num_cols], (void *)mean, sizeof(int *));
-        cend = get_cycles();
-        emit_sum += cycles_diff(cend, cbegin);
     }
     
     free(data);
@@ -348,7 +342,6 @@ void pca_cov_map(map_args_t *args)
     int sum;
     intptr_t covariance;
     intptr_t m1, m2;
-    long cbegin, cend;
     
     pca_cov_data_t *cov_data = (pca_cov_data_t *)args->data;
     mean = cov_data->mean;
@@ -357,7 +350,6 @@ void pca_cov_map(map_args_t *args)
     /* compute the covariance for the allocated region */
     for (i=0; i<cov_data->size; i++) 
     {
-        cbegin = get_cycles();
         start_idx = cov_data->cov_locs[i].start_row;
         cov_idx = cov_data->cov_locs[i].cov_row;
         assert(cov_idx >= start_idx);
@@ -377,21 +369,11 @@ void pca_cov_map(map_args_t *args)
         covariance = sum / (num_rows-1);
         
         //dprintf("Covariance for <%d, %d> is %d\n", start_idx, cov_idx, *covariance);
-        cend = get_cycles();
-        compute_sum += cycles_diff(cend, cbegin);
-        cbegin = get_cycles();
+        
         CHECK_ERROR((cov_loc = (pca_cov_loc_t *)malloc(sizeof(pca_cov_loc_t))) == NULL);
-        cend = get_cycles();
-        malloc_sum += cycles_diff(cend, cbegin);
-        cbegin = get_cycles();
         cov_loc->start_row = cov_data->cov_locs[i].start_row;
         cov_loc->cov_row = cov_data->cov_locs[i].cov_row;
-        cend = get_cycles();
-        compute_sum += cycles_diff(cend, cbegin);
-        cbegin = get_cycles();
         emit_intermediate((void *)cov_loc, (void *)covariance, sizeof(pca_cov_loc_t));
-        cend = get_cycles();
-        emit_sum += cycles_diff(cend, cbegin);
     }
     
     free(cov_data->cov_locs);
@@ -406,16 +388,17 @@ int main(int argc, char **argv)
     map_reduce_args_t map_reduce_args;
     int i;
     // struct timeval begin, end;
-    long cbegin, cend;
-    long sum_cbegin, sum_cend;
+    // struct timeval begin1, end1;
+    // clock_t start, finish;
+    struct timespec time1 = {0, 0};
+    struct timespec time2 = {0, 0};
 #ifdef TIMING
-    // unsigned int library_time = 0;
-    long library_cycles = 0;
+    unsigned int library_time = 0;
 #endif
-
+    // start = clock();
+    // gettimeofday(&begin1, NULL);
+    clock_gettime(CLOCK_REALTIME, &time1);
     // get_time (&begin);
-    cbegin = get_cycles();
-    sum_cbegin = get_cycles();
     
     parse_args(argc, argv);    
     
@@ -453,31 +436,24 @@ int main(int argc, char **argv)
     map_reduce_args.num_merge_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
-        
+    
     printf("PCA Mean: Calling MapReduce Scheduler\n");
 
     // get_time (&end);
-    cend = get_cycles();
 
 #ifdef TIMING
-    // fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "initialize: %lu cycles\n", cycles_diff (cend, cbegin));
+    fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
 #endif
 
-    // get_time (&begin);
-    cbegin = get_cycles();    
+    // get_time (&begin);    
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
     // get_time (&end);
-    cend = get_cycles();
 
 #ifdef TIMING
-    // library_time += time_diff (&end, &begin);
-    library_cycles += cycles_diff(cend, cbegin);
-    fprintf(stderr, "first lib %lu cycles\n", cycles_diff(cend, cbegin));
+    library_time += time_diff (&end, &begin);
 #endif
 
     // get_time (&begin);
-    cbegin = get_cycles();
 
     printf("PCA Mean: MapReduce Completed\n"); 
     
@@ -509,32 +485,25 @@ int main(int argc, char **argv)
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = atoi(GETENV("MR_KEYMATCHFACTOR"));//2;
     map_reduce_args.use_one_queue_per_task = true;
-  
+    
     printf("PCA Cov: Calling MapReduce Scheduler\n");
 
     // get_time (&end);
-    cend = get_cycles();
 
 #ifdef TIMING
     // fprintf (stderr, "inter library: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "inter library: %lu cycles\n", cycles_diff (cend, cbegin));
 #endif
 
     // get_time (&begin);
-    cbegin = get_cycles();
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
     // get_time (&end);
-    cend = get_cycles();
 
 #ifdef TIMING
     // library_time += time_diff (&end, &begin);
-    library_cycles += cycles_diff(cend, cbegin);
-    fprintf (stderr, "library: %lu cycles\n", library_cycles);
-    fprintf(stderr, "second lib %lu cycles\n", cycles_diff(cend, cbegin));
+    // fprintf (stderr, "library: %u\n", library_time);
 #endif
 
     // get_time (&begin);
-    cbegin = get_cycles();
 
     CHECK_ERROR (map_reduce_finalize ());
     
@@ -566,17 +535,15 @@ int main(int argc, char **argv)
     free (pca_data.matrix);
 
     // get_time (&end);
-    cend = get_cycles();
-    sum_cend = get_cycles();
+    clock_gettime(CLOCK_REALTIME, &time2);
+    // finish = clock();
+    // gettimeofday(&end1, NULL);
 
 #ifdef TIMING
     // fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
-    fprintf (stderr, "finalize: %lu cycles\n", cycles_diff (cend, cbegin));
-    fprintf (stderr, "sum: %lu cycles\n", cycles_diff (sum_cend, sum_cbegin));
-    fprintf (stderr, "compute: %lu cycles\n", compute_sum);
-    fprintf (stderr, "emit %lu cycles\n", emit_sum);
-    fprintf (stderr, "malloc %lu cycles\n", malloc_sum);
 #endif
-
+    // fprintf(stderr, "time %ldus\n", (finish - start));
+    fprintf(stderr, "time %ldus\n", (time2.tv_sec - time1.tv_sec) * 1000 * 1000 + (time2.tv_nsec - time1.tv_nsec) / 1000);
+    // fprintf(stderr, "time %ldus\n", (end1.tv_sec - begin1.tv_sec) * 1000 * 1000 + (end1.tv_usec - begin1.tv_usec));
     return 0;
 }
