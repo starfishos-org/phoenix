@@ -56,7 +56,7 @@ enum {
     NOT_IN_WORD
 };
 
-    struct timeval begin, end;
+    struct timespec begin, end;
 #ifdef TIMING
     unsigned int library_time = 0;
 #endif
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
     struct stat finfo;
     char * fname, * disp_num_str;
 
-    struct timeval starttime,endtime;
+    struct timespec starttime,endtime;
 
     get_time (&begin);
 
@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
 
     printf("Wordcount: Calling MapReduce Scheduler Wordcount\n");
 
-    gettimeofday(&starttime,0);
+    get_time(&starttime);
 
     get_time (&end);
 
@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
 
     get_time (&begin);
 
-    gettimeofday(&endtime,0);
+    get_time(&endtime);
 
     printf("Wordcount: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 

@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
    }
    fname_keys = argv[1];
 
-   struct timeval starttime,endtime;
+   struct timespec starttime,endtime;
    srand( (unsigned)time( NULL ) );
 
    printf("String Match: Running...\n");
@@ -211,9 +211,9 @@ int main(int argc, char *argv[])
    //str_data.encrypt_file  = ((char *)fdata_encrypt);   
 
    //printf("String Match: Calling Serial String Match\n");
-	 gettimeofday(&starttime,0);
+	get_time(&starttime);
    string_match(&str_data);
-	 gettimeofday(&endtime,0);
+	get_time(&endtime);
    printf("String Match: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
    free(str_data.salt);

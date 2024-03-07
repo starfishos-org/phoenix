@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
     char * fname_A, *fname_B;
     int *matrix_A_ptr, *matrix_B_ptr;
 
-    struct timeval begin, end;
+    struct timespec begin, end;
 
     get_time (&begin);
     

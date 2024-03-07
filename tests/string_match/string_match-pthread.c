@@ -271,7 +271,7 @@ int main(int argc, char *argv[]) {
     }
     fname_keys = argv[1];
 
-    struct timeval starttime,endtime;
+    struct timespec starttime,endtime;
     srand( (unsigned)time( NULL ) );
 
     /*// Read in the file
@@ -307,9 +307,9 @@ int main(int argc, char *argv[]) {
 
     printf("String Match: Calling Serial String Match\n");
 
-    gettimeofday(&starttime,0);
+    get_time(&starttime);
     string_match_splitter(&str_data);
-    gettimeofday(&endtime,0);
+    get_time(&endtime);
 
     printf("String Match: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 

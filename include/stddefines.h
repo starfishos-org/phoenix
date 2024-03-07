@@ -32,11 +32,11 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 // #define _CHCORE_
 
 #define TIMING
-#define TIMING0
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
@@ -91,15 +91,15 @@ static inline char *GETENV(char *envstr)
       duration.tv_nsec -= 1000000000L;                                     \
    }
 
-static inline unsigned int time_diff (
-    struct timeval *end, struct timeval *begin)
+static inline uint32_t time_diff (
+    struct timespec *end, struct timespec *begin)
 {
 #ifdef TIMING
-    uint64_t result;
+    uint32_t result;
 
     result = end->tv_sec - begin->tv_sec;
     result *= 1000000;     /* usec */
-    result += end->tv_usec - begin->tv_usec;
+    result += (end->tv_nsec - begin->tv_nsec) / 1000;
 
     return result;
 #else
@@ -107,17 +107,10 @@ static inline unsigned int time_diff (
 #endif
 }
 
-static inline void get_time (struct timeval *t)
+static inline void get_time (struct timespec *t)
 {
 #ifdef TIMING
-    gettimeofday (t, NULL);
-#endif
-}
-
-static inline void get_time0 (struct timeval *t)
-{
-#ifdef TIMING0
-    gettimeofday (t, NULL);
+    clock_gettime(CLOCK_REALTIME, t);
 #endif
 }
 

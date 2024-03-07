@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
     char * fname_A, *fname_B,*fname_out;
     int *matrix_A_ptr, *matrix_B_ptr;
 
-    struct timeval starttime,endtime;
+    struct timespec starttime,endtime;
     
     srand( (unsigned)time( NULL ) );
 
@@ -268,12 +268,12 @@ int main(int argc, char *argv[]) {
 
     printf("MatrixMult_pthreads: Calling MapReduce Scheduler Matrix Multiplication\n");
 
-	gettimeofday(&starttime,0);
+	get_time(&starttime);
     
     matrixmult_splitter(&mm_data);
     
 
-    gettimeofday(&endtime,0);
+    get_time(&endtime);
 
     printf("MatrixMult_pthreads: Multiply Completed time = %ld\n", (endtime.tv_sec - starttime.tv_sec));
 

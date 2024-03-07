@@ -88,7 +88,7 @@ static int mr_mypartition(int reduce_tasks, void* key, int key_size)
     //return default_partition(reduce_tasks, (void*)key, 4);
 }
 
-extern struct timeval begin, end;
+extern struct timespec begin, end;
 extern unsigned int library_time;
 
 /** mapreduce_sort()

@@ -387,18 +387,13 @@ int main(int argc, char **argv)
     final_data_t pca_cov_vals;
     map_reduce_args_t map_reduce_args;
     int i;
-    // struct timeval begin, end;
-    // struct timeval begin1, end1;
-    // clock_t start, finish;
-    struct timespec time1 = {0, 0};
-    struct timespec time2 = {0, 0};
+    struct timespec begin, end;
+    struct timespec all_begin, all_end;
 #ifdef TIMING
-    // unsigned int library_time = 0;
+    unsigned int library_time = 0;
 #endif
-    // start = clock();
-    // gettimeofday(&begin1, NULL);
-    clock_gettime(CLOCK_REALTIME, &time1);
-    // get_time (&begin);
+    get_time(&begin);
+    all_begin = begin;
     
     parse_args(argc, argv);    
     
@@ -439,21 +434,21 @@ int main(int argc, char **argv)
     
     printf("PCA Mean: Calling MapReduce Scheduler\n");
 
-    // get_time (&end);
+    get_time(&end);
 
 #ifdef TIMING
-    // fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
 #endif
 
-    // get_time (&begin);    
+    get_time(&begin);    
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    // get_time (&end);
+    get_time(&end);
 
 #ifdef TIMING
-    // library_time += time_diff (&end, &begin);
+    library_time += time_diff(&end, &begin);
 #endif
 
-    // get_time (&begin);
+    get_time(&begin);
 
     printf("PCA Mean: MapReduce Completed\n"); 
     
@@ -488,22 +483,22 @@ int main(int argc, char **argv)
     
     printf("PCA Cov: Calling MapReduce Scheduler\n");
 
-    // get_time (&end);
+    get_time(&end);
 
 #ifdef TIMING
-    // fprintf (stderr, "inter library: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "inter library: %u\n", time_diff(&end, &begin));
 #endif
 
-    // get_time (&begin);
+    get_time(&begin);
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    // get_time (&end);
+    get_time(&end);
 
 #ifdef TIMING
-    // library_time += time_diff (&end, &begin);
-    // fprintf (stderr, "library: %u\n", library_time);
+    library_time += time_diff(&end, &begin);
+    fprintf (stderr, "library: %u\n", library_time);
 #endif
 
-    // get_time (&begin);
+    get_time(&begin);
 
     CHECK_ERROR (map_reduce_finalize ());
     
@@ -534,16 +529,12 @@ int main(int argc, char **argv)
     free (pca_mean_vals.data);
     free (pca_data.matrix);
 
-    // get_time (&end);
-    clock_gettime(CLOCK_REALTIME, &time2);
-    // finish = clock();
-    // gettimeofday(&end1, NULL);
+    get_time(&end);
+    all_end = end;
 
 #ifdef TIMING
-    // fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
+    fprintf (stderr, "finalize: %u\n", time_diff(&end, &begin));
+    fprintf(stderr, "all time %u\n", time_diff(&all_end, &all_begin));
 #endif
-    // fprintf(stderr, "time %ldus\n", (finish - start));
-    fprintf(stderr, "time %ldus\n", (time2.tv_sec - time1.tv_sec) * 1000 * 1000 + (time2.tv_nsec - time1.tv_nsec) / 1000);
-    // fprintf(stderr, "time %ldus\n", (end1.tv_sec - begin1.tv_sec) * 1000 * 1000 + (end1.tv_usec - begin1.tv_usec));
     return 0;
 }

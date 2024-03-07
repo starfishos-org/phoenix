@@ -168,8 +168,8 @@ int main(int argc, char *argv[]) {
     struct stat finfo;
     int i;
 
-    struct timeval starttime,endtime;
-    struct timeval begin, end;
+    struct timespec starttime,endtime;
+    struct timespec begin, end;
 
     get_time (&begin);
 
@@ -226,7 +226,7 @@ int main(int argc, char *argv[]) {
 
     printf("Linear Regression: Calling MapReduce Scheduler\n");
 
-    gettimeofday(&starttime,0);
+    get_time(&starttime);
 
     get_time (&end);
 
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
     ybar = (double)SY_ll / n;
     r2 = (double)(n*SXY - SX*SY) * (n*SXY - SX*SY) / ((n*SXX - SX*SX)*(n*SYY - SY*SY));
 
-    gettimeofday(&endtime,0);
+    get_time(&endtime);
 
     printf("Linear Regression: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 

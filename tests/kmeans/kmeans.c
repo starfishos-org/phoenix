@@ -361,7 +361,7 @@ int main(int argc, char **argv)
     int *means;
     bool first_run;
 
-    struct timeval begin, end;
+    struct timespec begin, end;
 #ifdef TIMING
     unsigned int library_time = 0;
     unsigned int inter_library_time = 0;

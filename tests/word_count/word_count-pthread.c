@@ -401,7 +401,7 @@ int main(int argc, char *argv[]) {
    struct stat finfo;
    char * fname, * disp_num_str;
 
-   struct timeval starttime,endtime;
+   struct timespec starttime,endtime;
 
    // Make sure a filename is specified
    if (argv[1] == NULL)
@@ -436,20 +436,20 @@ int main(int argc, char *argv[]) {
 
    dprintf("Wordcount: Calling MapReduce Scheduler Wordcount\n");
 
-   gettimeofday(&starttime,0);
+   get_time(&starttime);
 
    wordcount_splitter(&wc_data);
    
 
-   gettimeofday(&endtime,0);
+   get_time(&endtime);
 
    printf("Word Count: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
-   gettimeofday(&starttime,0);
+   get_time(&starttime);
 
    sort_pthreads(words[0], use_len[0], sizeof(wc_count_t), wordcount_cmp);
 
-   gettimeofday(&endtime,0);
+   get_time(&endtime);
 
 	dprintf("Word Count: Sorting Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 

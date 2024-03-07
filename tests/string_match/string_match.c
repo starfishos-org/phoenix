@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
     struct stat finfo_keys;
     char *fname_keys;
 
-    struct timeval begin, end;
+    struct timespec begin, end;
 
     get_time (&begin);
 
@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
     }
     fname_keys = argv[1];
 
-    struct timeval starttime,endtime;
+    struct timespec starttime,endtime;
     srand( (unsigned)time( NULL ) );
 
     printf("String Match: Running...\n");
@@ -309,7 +309,7 @@ int main(int argc, char *argv[]) {
 	compute_hashes(key3, key3_final);
 	compute_hashes(key4, key4_final);
 
-    gettimeofday(&starttime,0);
+    get_time(&starttime);
 
     get_time (&end);
 
@@ -329,7 +329,7 @@ int main(int argc, char *argv[]) {
 
     CHECK_ERROR (map_reduce_finalize ());
 
-    gettimeofday(&endtime,0);
+    get_time(&endtime);
 
     free(key1_final);
     free(key2_final);

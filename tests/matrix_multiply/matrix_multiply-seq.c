@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 
    printf("MatrixMult: Calling Serial Matrix Multiplication\n");
 
-   //gettimeofday(&starttime,0);
+   // gettime(&starttime);
    
    
    memset(mm_data.matrix_out, 0, file_size);

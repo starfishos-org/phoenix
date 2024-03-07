@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     char *fdata;
     struct stat finfo;
     char * fname;
-    struct timeval begin, end;
+    struct timespec begin, end;
 
     get_time (&begin);
 
