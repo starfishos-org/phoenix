@@ -152,7 +152,7 @@ inline int proc_unbind_thread ()
 /* Test whether processor CPU_ID is available. */
 inline bool proc_is_available (int cpu_id)
 {
-#if defined _LINUX_ || defined _CHCORE_
+#if defined _LINUX_
     int ret;
     cpu_set_t cpu_set;
     
@@ -160,6 +160,9 @@ inline bool proc_is_available (int cpu_id)
     if (ret < 0) return false;
 
     return CPU_ISSET (cpu_id, &cpu_set) ? true : false;
+#elif defined _CHCORE_
+    printf("proc_is_available is not implemented on chcore\n");
+    return true;
 #elif defined (_SOLARIS_)
     return (p_online (cpu_id, P_STATUS) == P_ONLINE);
 #endif
@@ -167,7 +170,7 @@ inline bool proc_is_available (int cpu_id)
 
 inline int proc_get_cpuid (void)
 {
-#if defined _LINUX_ || defined _CHCORE_
+#if defined _LINUX_
     int i, ret;
     cpu_set_t cpu_set;
     
@@ -179,6 +182,9 @@ inline int proc_get_cpuid (void)
         if (CPU_ISSET (i, &cpu_set)) break;
     }
     return i;
+#elif defined _CHCORE_
+    printf("proc_get_cpuid is not implemented on chcore\n");
+    return 0;
 #elif defined (_SOLARIS_)
     return getcpuid ();
 #endif
