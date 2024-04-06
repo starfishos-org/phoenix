@@ -41,7 +41,7 @@ APPS := \
         kmeans \
         matrix_multiply \
         word_count \
-        basic \
+        # basic \
 #
 default: all
 
