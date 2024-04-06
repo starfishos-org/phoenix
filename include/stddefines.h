@@ -32,11 +32,11 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <time.h>
 
 // #define _CHCORE_
 
-#define TIMING
+// #define TIMING
+// #define TIMING0
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
@@ -91,15 +91,15 @@ static inline char *GETENV(char *envstr)
       duration.tv_nsec -= 1000000000L;                                     \
    }
 
-static inline uint32_t time_diff (
-    struct timespec *end, struct timespec *begin)
+static inline unsigned int time_diff (
+    struct timeval *end, struct timeval *begin)
 {
 #ifdef TIMING
-    uint32_t result;
+    uint64_t result;
 
     result = end->tv_sec - begin->tv_sec;
     result *= 1000000;     /* usec */
-    result += (end->tv_nsec - begin->tv_nsec) / 1000;
+    result += end->tv_usec - begin->tv_usec;
 
     return result;
 #else
@@ -107,37 +107,43 @@ static inline uint32_t time_diff (
 #endif
 }
 
-static inline void get_time (struct timespec *t)
+static inline void get_time (struct timeval *t)
 {
 #ifdef TIMING
-    clock_gettime(CLOCK_REALTIME, t);
+    gettimeofday (t, NULL);
 #endif
 }
 
-static inline uint64_t get_cycles(void)
+static inline void get_time0 (struct timeval *t)
+{
+#ifdef TIMING0
+    gettimeofday (t, NULL);
+#endif
+}
+
+static inline long get_cycles(void)
 {
 #ifdef TIMING
    unsigned int lo, hi;
 	asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-	return (((uint64_t)hi) << 32) | lo;
-#else
-   return 0;
+	return (((unsigned long long)hi) << 32) | lo;
 #endif
+return 0;
 }
 
-static inline uint64_t cycles_diff(uint64_t end, uint64_t begin)
+// unit: kilo
+static inline long cycles_diff(long end, long begin)
 {
 #ifdef TIMING
+   // static long kilo = (1 << 10);
   if (end >= begin)
    {
       return end - begin;
    }
    
    return UINT64_MAX - (end - begin);
-#else
-   return 0;
 #endif
-   
+return 0;
 }
 
 #endif // STDDEFINES_H_

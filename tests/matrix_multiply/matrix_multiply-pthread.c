@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
     char * fname_A, *fname_B,*fname_out;
     int *matrix_A_ptr, *matrix_B_ptr;
 
-    struct timespec starttime,endtime;
+    struct timeval starttime,endtime;
     
     srand( (unsigned)time( NULL ) );
 

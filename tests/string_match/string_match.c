@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
     struct stat finfo_keys;
     char *fname_keys;
 
-    struct timespec begin, end;
+    struct timeval begin, end;
 
     get_time (&begin);
 
@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
     }
     fname_keys = argv[1];
 
-    struct timespec starttime,endtime;
+    struct timeval starttime,endtime;
     srand( (unsigned)time( NULL ) );
 
     printf("String Match: Running...\n");

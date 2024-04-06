@@ -56,7 +56,7 @@ enum {
     NOT_IN_WORD
 };
 
-    struct timespec begin, end;
+    struct timeval begin, end;
 #ifdef TIMING
     unsigned int library_time = 0;
 #endif
@@ -239,7 +239,7 @@ int main(int argc, char *argv[])
     struct stat finfo;
     char * fname, * disp_num_str;
 
-    struct timespec starttime,endtime;
+    struct timeval starttime,endtime;
 
     get_time (&begin);
 

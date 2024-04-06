@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
    }
    fname_keys = argv[1];
 
-   struct timespec starttime,endtime;
+   struct timeval starttime,endtime;
    srand( (unsigned)time( NULL ) );
 
    printf("String Match: Running...\n");

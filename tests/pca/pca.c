@@ -34,7 +34,6 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
-#include <time.h>
 
 #include "stddefines.h"
 #include "map_reduce.h"
@@ -387,13 +386,12 @@ int main(int argc, char **argv)
     final_data_t pca_cov_vals;
     map_reduce_args_t map_reduce_args;
     int i;
-    struct timespec begin, end;
-    struct timespec all_begin, all_end;
+    struct timeval begin, end;
 #ifdef TIMING
     unsigned int library_time = 0;
 #endif
-    get_time(&begin);
-    all_begin = begin;
+    gettimeofday(&begin, NULL);
+    get_time (&begin);
     
     parse_args(argc, argv);    
     
@@ -434,21 +432,21 @@ int main(int argc, char **argv)
     
     printf("PCA Mean: Calling MapReduce Scheduler\n");
 
-    get_time(&end);
+    get_time (&end);
 
 #ifdef TIMING
     fprintf (stderr, "initialize: %u\n", time_diff (&end, &begin));
 #endif
 
-    get_time(&begin);    
+    get_time (&begin);    
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    get_time(&end);
+    get_time (&end);
 
 #ifdef TIMING
-    library_time += time_diff(&end, &begin);
+    library_time += time_diff (&end, &begin);
 #endif
 
-    get_time(&begin);
+    get_time (&begin);
 
     printf("PCA Mean: MapReduce Completed\n"); 
     
@@ -483,22 +481,22 @@ int main(int argc, char **argv)
     
     printf("PCA Cov: Calling MapReduce Scheduler\n");
 
-    get_time(&end);
+    get_time (&end);
 
 #ifdef TIMING
-    fprintf (stderr, "inter library: %u\n", time_diff(&end, &begin));
+    fprintf (stderr, "inter library: %u\n", time_diff (&end, &begin));
 #endif
 
-    get_time(&begin);
+    get_time (&begin);
     CHECK_ERROR(map_reduce(&map_reduce_args) < 0);
-    get_time(&end);
+    get_time (&end);
 
 #ifdef TIMING
-    library_time += time_diff(&end, &begin);
+    library_time += time_diff (&end, &begin);
     fprintf (stderr, "library: %u\n", library_time);
 #endif
 
-    get_time(&begin);
+    get_time (&begin);
 
     CHECK_ERROR (map_reduce_finalize ());
     
@@ -529,12 +527,19 @@ int main(int argc, char **argv)
     free (pca_mean_vals.data);
     free (pca_data.matrix);
 
-    get_time(&end);
-    all_end = end;
+    get_time (&end);
+    gettimeofday(&end, NULL);
+    uint64_t result;
+
+    result = end.tv_sec - begin.tv_sec;
+    result *= 1000000;     /* usec */
+    result += end.tv_usec - begin.tv_usec;
+
+    fprintf(stderr, "sum %lu\n", result);
 
 #ifdef TIMING
-    fprintf (stderr, "finalize: %u\n", time_diff(&end, &begin));
-    fprintf(stderr, "all time %u\n", time_diff(&all_end, &all_begin));
+    fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
     return 0;
 }

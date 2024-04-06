@@ -25,7 +25,7 @@
 */
 
 /* OS specific headers and defines. */
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
 #define _GNU_SOURCE
 #include <sched.h>
 
@@ -33,9 +33,6 @@
 #include <sys/procset.h>
 #include <sys/processor.h>
 #include <sys/lgrp_user.h>
-
-#elif defined (_CHCORE_)
-#include <chcore/syscall.h>
 
 #else
 #error OS not supported
@@ -89,7 +86,7 @@ out:
     return num_cpus;
 }
 
-#ifdef _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
 static cpu_set_t    full_cs;
 static cpu_set_t* proc_get_full_set(void)
 {
@@ -116,13 +113,7 @@ static cpu_set_t* proc_get_full_set(void)
    Returns 0 if successful, -1 if failed. */
 inline int proc_bind_thread (int cpu_id)
 {
-#ifdef _CHCORE_
-    int ret;
-    ret = usys_set_affinity(-2, cpu_id);
-    if (!ret) return ret;
-    usys_yield();
-    return 0;
-#elif defined (_LINUX_)
+#if defined _LINUX_ || defined _CHCORE_
     cpu_set_t   cpu_set;
 
     CPU_ZERO (&cpu_set);
@@ -136,13 +127,7 @@ inline int proc_bind_thread (int cpu_id)
 
 inline int proc_unbind_thread ()
 {
-#ifdef _CHCORE_
-    int ret;
-    ret = usys_set_affinity(-1, NO_AFF);
-    if (!ret) return ret;
-    usys_yield();
-    return 0;
-#elif defined (_LINUX_)
+#if defined _LINUX_ || defined _CHCORE_
     return sched_setaffinity (0, sizeof (cpu_set_t), proc_get_full_set());
 #elif defined (_SOLARIS_)
     return processor_bind (P_LWPID, P_MYID, PBIND_NONE, NULL);
@@ -152,7 +137,7 @@ inline int proc_unbind_thread ()
 /* Test whether processor CPU_ID is available. */
 inline bool proc_is_available (int cpu_id)
 {
-#if defined _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     int ret;
     cpu_set_t cpu_set;
     
@@ -160,9 +145,6 @@ inline bool proc_is_available (int cpu_id)
     if (ret < 0) return false;
 
     return CPU_ISSET (cpu_id, &cpu_set) ? true : false;
-#elif defined _CHCORE_
-    printf("proc_is_available is not implemented on chcore\n");
-    return true;
 #elif defined (_SOLARIS_)
     return (p_online (cpu_id, P_STATUS) == P_ONLINE);
 #endif
@@ -170,7 +152,7 @@ inline bool proc_is_available (int cpu_id)
 
 inline int proc_get_cpuid (void)
 {
-#if defined _LINUX_
+#if defined _LINUX_ || defined _CHCORE_
     int i, ret;
     cpu_set_t cpu_set;
     
@@ -182,9 +164,6 @@ inline int proc_get_cpuid (void)
         if (CPU_ISSET (i, &cpu_set)) break;
     }
     return i;
-#elif defined _CHCORE_
-    printf("proc_get_cpuid is not implemented on chcore\n");
-    return 0;
 #elif defined (_SOLARIS_)
     return getcpuid ();
 #endif

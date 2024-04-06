@@ -168,8 +168,8 @@ int main(int argc, char *argv[]) {
     struct stat finfo;
     int i;
 
-    struct timespec starttime,endtime;
-    struct timespec begin, end;
+    struct timeval starttime,endtime;
+    struct timeval begin, end;
 
     get_time (&begin);
 

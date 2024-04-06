@@ -401,7 +401,7 @@ int main(int argc, char *argv[]) {
    struct stat finfo;
    char * fname, * disp_num_str;
 
-   struct timespec starttime,endtime;
+   struct timeval starttime,endtime;
 
    // Make sure a filename is specified
    if (argv[1] == NULL)
