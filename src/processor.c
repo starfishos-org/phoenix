@@ -109,6 +109,8 @@ static cpu_set_t* proc_get_full_set(void)
 }
 #endif
 
+#define DSM_ENABLED
+
 /* Bind the calling thread to run on CPU_ID. 
    Returns 0 if successful, -1 if failed. */
 inline int proc_bind_thread (int cpu_id)
@@ -118,8 +120,12 @@ inline int proc_bind_thread (int cpu_id)
 
     CPU_ZERO (&cpu_set);
     CPU_SET (cpu_id, &cpu_set);
-
-    return sched_setaffinity (0, sizeof (cpu_set), &cpu_set);
+#if defined DSM_ENABLED
+    sched_setaffinity(-2, sizeof(cpu_set), &cpu_set);
+#else
+    sched_setaffinity (0, sizeof (cpu_set), &cpu_set);
+#endif
+    return sched_yield();
 #elif defined (_SOLARIS_)
     return processor_bind (P_LWPID, P_MYID, cpu_id, NULL);
 #endif
@@ -128,6 +134,10 @@ inline int proc_bind_thread (int cpu_id)
 inline int proc_unbind_thread ()
 {
 #if defined _LINUX_ || defined _CHCORE_
+#if defined DSM_ENABLED
+    /* avoid rescheding */
+    return 0;
+#endif
     return sched_setaffinity (0, sizeof (cpu_set_t), proc_get_full_set());
 #elif defined (_SOLARIS_)
     return processor_bind (P_LWPID, P_MYID, PBIND_NONE, NULL);
