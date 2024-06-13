@@ -33,9 +33,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-// #define _CHCORE_
+#define _CHCORE_
 
-// #define TIMING
+#define TIMING
 // #define TIMING0
 
 /* Debug printf */

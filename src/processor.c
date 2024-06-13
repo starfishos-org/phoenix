@@ -68,6 +68,7 @@ inline int proc_get_num_cpus (void)
         /* FIXME(FN): need to check whelther it exceed max cpu number*/
         /* but in chcore, sysconf is not implemented */
         num_cpus = thread_num;
+        // printf("Thread number is set as %d\n", thread_num);
         goto out;
     }
 
@@ -82,7 +83,7 @@ inline int proc_get_num_cpus (void)
     }
 
 out:
-    info_once("phoenix cpu num=%d\n", num_cpus);
+    // info_once("phoenix cpu num=%d\n", num_cpus);
     return num_cpus;
 }
 

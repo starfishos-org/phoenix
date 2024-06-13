@@ -186,6 +186,8 @@ void matrixmult_map(map_args_t *args)
     free(args->data);
 }
 
+extern int thread_num;
+
 int main(int argc, char *argv[]) {
 
     final_data_t mm_vals;
@@ -221,14 +223,27 @@ int main(int argc, char *argv[]) {
         row_block_len = 1;
     else
         CHECK_ERROR ( (row_block_len = atoi(argv[2])) < 0);
-
-    if(argv[3] != NULL)
-        create_files = 1;
-    else
-        create_files = 0;
-
+    
+    create_files = 0;
+    if(argv[3] != NULL) {
+        if (strncmp(argv[3], "-t=", 3) == 0) 
+        {
+            thread_num = atoi(argv[3] + 3);
+        } else {
+            create_files = 1;
+        }
+    }
+        
+    if(argv[4] != NULL) {
+        if (strncmp(argv[4], "-t=", 3) == 0) 
+        {
+            thread_num = atoi(argv[4] + 3);
+        }
+    }
+    
     printf("MatrixMult: Side of the matrix is %d\n", matrix_len);
     printf("MatrixMult: Row Block Len is %d\n", row_block_len);
+    printf("MatrixMult: Number of threads=%d\n", thread_num);  
     printf("MatrixMult: Running...\n");
 
     /* If the matrix files do not exist, create them */
