@@ -38,6 +38,59 @@
 #define ALIGN_PAGE(ptr) (void *)((uintptr_t)(ptr) & (~(PAGE_SIZE - 1)))
 
 #include "memory.h"
+#include "stddefines.h"
+
+
+#ifdef RPMALLOC
+#include <rpmalloc.h>
+
+inline void *mem_malloc (size_t size)
+{
+    void *temp = rpmalloc (size);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_malloc_here (size_t size)
+{
+    void *temp = rpmalloc (size);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_calloc (size_t num, size_t size)
+{
+    void *temp = rpcalloc (num, size);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_realloc (void *ptr, size_t size)
+{
+    void *temp = rprealloc (ptr, size);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_memcpy (void *dest, const void *src, size_t size)
+{
+    return memcpy (dest, src, size);
+}
+
+inline void *mem_memset (void *s, int c, size_t n)
+{
+    return memset (s, c, n);
+}
+
+inline void mem_free (void *ptr)
+{
+    rpfree (ptr);
+}
+#else
 
 inline void *mem_malloc (size_t size)
 {
@@ -85,3 +138,5 @@ inline void mem_free (void *ptr)
 {
     free (ptr);
 }
+
+#endif

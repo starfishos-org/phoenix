@@ -32,11 +32,13 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <rpmalloc.h>
 
 #define _CHCORE_
 
 #define TIMING
 // #define TIMING0
+// #define RPMALLOC
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)

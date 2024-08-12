@@ -27,28 +27,37 @@
 
 # This Makefile requires GNU make.
 
-HOME = ..
+HOME = ../..
 
 include $(HOME)/Defines.mk
 
+LIBS += -L$(HOME)/$(LIB_DIR) -l$(PHOENIX)
+
+BASIC_OBJS = basic.o
+
+COMPUTE_SEQ_OBJS = compute-seq.o
+
+COMPUTE_PTHREAD_OBJS = compute-pthread.o
+
+PROGS = compute-seq compute-pthread basic
+
 .PHONY: default all clean
 
-APPS := \
-        histogram \
-        linear_regression \
-        pca \
-        string_match \
-        kmeans \
-        matrix_multiply \
-        word_count \
-        basic \
-#
 default: all
 
-all: 
-	@$(foreach APP, $(APPS), \
-            $(MAKE) -C $(APP) --no-print-directory;)
+all: $(PROGS)
+
+basic: $(BASIC_OBJS) $(LIB_DEP)
+	$(CC) $(CFLAGS) -o $@ $(BASIC_OBJS) $(LIBS)
+
+compute-seq: $(COMPUTE_SEQ_OBJS) $(LIB_DEP)
+	$(CC) $(CFLAGS) -o $@ $(COMPUTE_SEQ_OBJS) $(LIBS)
+
+compute-pthread: $(COMPUTE_PTHREAD_OBJS) $(LIB_DEP)
+	$(CC) $(CFLAGS) -o $@ $(COMPUTE_PTHREAD_OBJS) $(LIBS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@ -I$(HOME)/$(INC_DIR)
 
 clean:
-	@$(foreach APP, $(APPS), \
-            $(MAKE) -C $(APP) clean --no-print-directory;)
+	rm -f $(PROGS) $(COMPUTE_SEQ_OBJS) $(COMPUTE_PTHREAD_OBJS) $(BASIC_OBJS)
