@@ -34,10 +34,9 @@ include $(HOME)/Defines.mk
 LIBS += -L$(HOME)/$(LIB_DIR) -l$(PHOENIX)
 
 MM_OBJS = matrix_multiply.o
-MM_SEQ_OBJS = matrix_multiply-seq.o
-MM_PTHREAD_OBJS = matrix_multiply-pthread.o
+MM_CXL_OBJS = matrix_multiply_cxl.o
 
-PROGS = matrix_multiply matrix_multiply-seq matrix_multiply-pthread
+PROGS = matrix_multiply matrix_multiply_cxl
 
 .PHONY: default all clean
 
@@ -47,15 +46,12 @@ all: $(PROGS)
 
 matrix_multiply: $(MM_OBJS) $(LIB_DEP)
 	$(CC) $(CFLAGS) -o $@ $(MM_OBJS) $(LIBS)
-	
-matrix_multiply-seq: $(MM_SEQ_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(MM_SEQ_OBJS) $(LIBS)
-	
-matrix_multiply-pthread: $(MM_PTHREAD_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(MM_PTHREAD_OBJS) $(LIBS)
+
+matrix_multiply_cxl: $(MM_CXL_OBJS) $(LIB_DEP)
+	$(CC) $(CFLAGS) -o $@ $(MM_CXL_OBJS) $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@ -I$(HOME)/$(INC_DIR)
 
 clean:
-	rm -f $(PROGS) $(MM_OBJS) $(MM_SEQ_OBJS) $(MM_PTHREAD_OBJS)
+	rm -f $(PROGS) $(MM_OBJS)
