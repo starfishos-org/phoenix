@@ -89,7 +89,14 @@ int matrixmult_splitter(void *data_in, int req_units, map_args_t *out)
 {
     /* Make a copy of the mm_data structure */
     mm_data_t * data = (mm_data_t *)data_in; 
-    mm_data_t * data_out = (mm_data_t *)mixed_malloc(sizeof(mm_data_t), MALLOC_TYPE_DEFAULT);
+    mm_data_t * data_out;
+    #ifdef RPMALLOC 
+        data_out = (mm_data_t *)rpmalloc(sizeof(mm_data_t));
+    #elif defined MALLOC_CXL && !defined RPMALLOC
+        data_out = (mm_data_t *)mixed_malloc(sizeof(mm_data_t), MALLOC_TYPE_SHARED);
+    #else
+        data_out = (mm_data_t *)malloc(sizeof(mm_data_t));
+    #endif
     memcpy((char*)data_out,(char*)data,sizeof(mm_data_t));
 
     /* Check whether the various terms exist */
@@ -112,7 +119,11 @@ int matrixmult_splitter(void *data_in, int req_units, map_args_t *out)
     if(data->row_num >= data->matrix_len)
     {
         fflush(stdout);
-        free(data_out);
+        #ifdef RPMALLOC
+            rpfree(data_out);
+        #else
+            free(data_out);
+        #endif
         return 0;
     }
 
@@ -185,7 +196,11 @@ void matrixmult_map(map_args_t *args)
     /* dprintf("Finished Map task %d\n",data->row_num); */
 
     /* fflush(stdout); */
-    free(args->data);
+    #ifdef RPMALLOC
+        rpfree(args->data);
+    #else
+        free(args->data);
+    #endif
 }
 
 extern int thread_num;
@@ -290,8 +305,13 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_A, &finfo_A) < 0);
 #ifndef NO_MMAP
     // Memory map the file
+    #ifdef MALLOC_CXL
+    CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_CXL, fd_A, 0)) == NULL);
+    #else
     CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
         PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
+    #endif
 #else
     int ret;
 
@@ -308,8 +328,13 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_B, &finfo_B) < 0);
 #ifndef NO_MMAP
     // Memory map the file
+    #ifdef MALLOC_CXL
+    CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_CXL, fd_B, 0)) == NULL);
+    #else
     CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
         PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
+    #endif
 #else
     fdata_B = (char *)malloc (file_size);
     CHECK_ERROR (fdata_B == NULL);
@@ -326,8 +351,13 @@ int main(int argc, char *argv[]) {
     mm_data.matrix_A = NULL;
     mm_data.matrix_B = NULL;
     mm_data.row_num = 0;
-
-    mm_data.output = (int*)mixed_malloc(matrix_len*matrix_len*sizeof(int), MALLOC_TYPE_DEFAULT);
+    #ifdef RPMALLOC 
+        mm_data.output = (int*)rpmalloc(matrix_len*matrix_len*sizeof(int));
+    #elif defined MALLOC_CXL && !defined RPMALLOC
+        mm_data.output = (int*)mixed_malloc(matrix_len*matrix_len*sizeof(int), MALLOC_TYPE_SHARED);
+    #else
+        mm_data.output = (int*)malloc(matrix_len*matrix_len*sizeof(int));
+    #endif
     
     mm_data.matrix_A = matrix_A_ptr = ((int *)fdata_A);
     mm_data.matrix_B = matrix_B_ptr = ((int *)fdata_B);
@@ -387,9 +417,14 @@ int main(int argc, char *argv[]) {
     //dprintf("\n");
 
     dprintf("MatrixMult: MapReduce Completed\n");
+    #ifdef RPMALLOC
+        rpfree(mm_vals.data);
+        rpfree(mm_data.output);
+    #else
+        free(mm_vals.data);
+        free(mm_data.output);
+    #endif
 
-    free(mm_vals.data);
-    free(mm_data.output);
 
 #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata_A, file_size + 1) < 0);

@@ -38,7 +38,8 @@
 
 #define TIMING
 // #define TIMING0
-// #define RPMALLOC
+#define RPMALLOC
+#define MALLOC_CXL
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)

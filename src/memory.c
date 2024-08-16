@@ -39,6 +39,8 @@
 
 #include "memory.h"
 #include "stddefines.h"
+#include <malloc.h>
+#include <chcore/defs.h>
 
 
 #ifdef RPMALLOC
@@ -90,6 +92,56 @@ inline void mem_free (void *ptr)
 {
     rpfree (ptr);
 }
+
+#elif defined MALLOC_MIXED
+
+inline void *mem_malloc (size_t size)
+{
+    void *temp = mixed_malloc (size, MALLOC_TYPE_DEFAULT);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_malloc_here (size_t size)
+{
+    void *temp = mixed_malloc (size, MALLOC_TYPE_DEFAULT);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_calloc (size_t num, size_t size)
+{
+    void *temp = mixed_calloc (num, size, MALLOC_TYPE_DEFAULT);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_realloc (void *ptr, size_t size)
+{
+    void *temp = mixed_realloc (ptr, size, MALLOC_TYPE_DEFAULT);
+    assert(temp);
+
+    return temp;
+}
+
+inline void *mem_memcpy (void *dest, const void *src, size_t size)
+{
+    return memcpy (dest, src, size);
+}
+
+inline void *mem_memset (void *s, int c, size_t n)
+{
+    return memset (s, c, n);
+}
+
+inline void mem_free (void *ptr)
+{
+    free (ptr);
+}
+
 #else
 
 inline void *mem_malloc (size_t size)
