@@ -300,8 +300,13 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_A, &finfo_A) < 0);
 #ifndef NO_MMAP
     // Memory map the file
+    #ifdef DSM_SHARED_DATA_MODE_CXL
+    CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_CXL, fd_A, 0)) == NULL);
+    #else
     CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
         PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
+    #endif
 #else
     int ret;
 
@@ -322,8 +327,13 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_B, &finfo_B) < 0);
 #ifndef NO_MMAP
     // Memory map the file
+    #ifdef DSM_SHARED_DATA_MODE_CXL
+    CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_CXL, fd_B, 0)) == NULL);
+    #else
     CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
         PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
+    #endif
 #else
     #ifdef RPMALLOC
         fdata_B = (char *)rpmalloc (file_size);
@@ -445,5 +455,6 @@ int main(int argc, char *argv[]) {
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
 
+    fprintf(stdout, "matrix multiply finished\n");
     return 0;
 }

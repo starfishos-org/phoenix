@@ -39,7 +39,7 @@
 #define TIMING
 // #define TIMING0
 #define RPMALLOC
-#define MALLOC_CXL
+#define DSM_SHARED_DATA_MODE_CXL
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
