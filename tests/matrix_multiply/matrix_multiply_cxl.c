@@ -38,8 +38,10 @@
 #include <time.h>
 #include <inttypes.h>
 #include <sys/time.h>
+#ifdef DSM_SHARED_DATA_MODE_CXL
 #include <malloc.h>
 #include <chcore/defs.h>
+#endif
 
 #include "map_reduce.h"
 #include "stddefines.h"

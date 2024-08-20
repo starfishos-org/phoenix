@@ -39,9 +39,11 @@
 
 #include "memory.h"
 #include "stddefines.h"
+
+#ifdef DSM_SHARED_DATA_MODE_CXL
 #include <malloc.h>
 #include <chcore/defs.h>
-
+#endif
 
 #ifdef RPMALLOC
 #include <rpmalloc.h>

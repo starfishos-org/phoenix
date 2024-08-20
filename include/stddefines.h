@@ -32,7 +32,7 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <rpmalloc.h>
+
 
 #define _CHCORE_
 
@@ -40,6 +40,10 @@
 // #define TIMING0
 #define RPMALLOC
 #define DSM_SHARED_DATA_MODE_CXL
+
+#ifdef RPMALLOC
+#include <rpmalloc.h>
+#endif
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)
