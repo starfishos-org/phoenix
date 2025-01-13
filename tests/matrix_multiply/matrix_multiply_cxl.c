@@ -345,6 +345,11 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR (ret != file_size);
 #endif
 
+    for (size_t i = 0; i < file_size + 1; i += _SC_PAGESIZE) {
+        volatile char c = fdata_B[i];
+        c = fdata_A[i];
+    }
+
     // Setup splitter args
     mm_data_t mm_data;
     mm_data.unit_size = row_block_len*matrix_len*sizeof(int); 
