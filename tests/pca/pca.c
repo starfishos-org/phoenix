@@ -571,5 +571,7 @@ int main(int argc, char **argv)
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
 
+    fprintf(stderr, "done\n");
+
     return 0;
 }

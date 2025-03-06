@@ -35,10 +35,10 @@ OS = -D_CYGWIN_
 endif
 
 # ifeq ($(OSTYPE),Linux)
-OS = -D_LINUX_
+OS = -D_CHCORE_
 # CC = gcc
-#DEBUG = -g
-CFLAGS = -Wall $(OS) $(DEBUG) -O3
+DEBUG = -g
+CFLAGS = -Wall $(OS) $(DEBUG) -O3 -static
 LIBS = -pthread
 # endif
 
