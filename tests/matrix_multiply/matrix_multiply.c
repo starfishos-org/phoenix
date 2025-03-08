@@ -456,5 +456,7 @@ int main(int argc, char *argv[]) {
 #endif
 
     fprintf(stdout, "matrix multiply finished\n");
+
+    fprintf(stderr, "done\n");
     return 0;
 }
