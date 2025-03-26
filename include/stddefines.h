@@ -33,13 +33,15 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <chcore/defs.h>
 
-#define _CHCORE_
+
+// #define _CHCORE_
 
 #define TIMING
 // #define TIMING0
 #define RPMALLOC
-#define DSM_SHARED_DATA_MODE_CXL
+// #define MALLOC_MIXED
 
 #ifdef RPMALLOC
 #include <rpmalloc.h>

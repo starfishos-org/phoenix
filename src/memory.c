@@ -40,9 +40,8 @@
 #include "memory.h"
 #include "stddefines.h"
 
-#ifdef DSM_SHARED_DATA_MODE_CXL
+#ifdef MALLOC_MIXED
 #include <malloc.h>
-#include <chcore/defs.h>
 #endif
 
 #ifdef RPMALLOC
@@ -97,9 +96,11 @@ inline void mem_free (void *ptr)
 
 #elif defined MALLOC_MIXED
 
+extern int memory_malloc_type;
+
 inline void *mem_malloc (size_t size)
 {
-    void *temp = mixed_malloc (size, MALLOC_TYPE_DEFAULT);
+    void *temp = mixed_malloc (size, memory_malloc_type);
     assert(temp);
 
     return temp;
@@ -107,7 +108,7 @@ inline void *mem_malloc (size_t size)
 
 inline void *mem_malloc_here (size_t size)
 {
-    void *temp = mixed_malloc (size, MALLOC_TYPE_DEFAULT);
+    void *temp = mixed_malloc (size, memory_malloc_type);
     assert(temp);
 
     return temp;
@@ -115,7 +116,7 @@ inline void *mem_malloc_here (size_t size)
 
 inline void *mem_calloc (size_t num, size_t size)
 {
-    void *temp = mixed_calloc (num, size, MALLOC_TYPE_DEFAULT);
+    void *temp = mixed_calloc (num, size, memory_malloc_type);
     assert(temp);
 
     return temp;
@@ -123,7 +124,7 @@ inline void *mem_calloc (size_t num, size_t size)
 
 inline void *mem_realloc (void *ptr, size_t size)
 {
-    void *temp = mixed_realloc (ptr, size, MALLOC_TYPE_DEFAULT);
+    void *temp = mixed_realloc (ptr, size, memory_malloc_type);
     assert(temp);
 
     return temp;

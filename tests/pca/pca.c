@@ -38,6 +38,10 @@
 #include "stddefines.h"
 #include "map_reduce.h"
 
+extern void *mem_malloc(size_t size);
+extern void mem_free(void *ptr);
+extern int memory_malloc_type;
+
 typedef struct {
     int *matrix;
     keyval_t *mean;
@@ -86,7 +90,7 @@ void parse_args(int argc, char **argv)
     grid_size = DEF_GRID_SIZE;
     thread_num = 0;
 
-    while ((c = getopt(argc, argv, "r:c:t:s")) != EOF) 
+    while ((c = getopt(argc, argv, "r:c:t:s:m:")) != EOF) 
     {
         switch (c) {
             case 'r':
@@ -101,8 +105,11 @@ void parse_args(int argc, char **argv)
             case 't':
                 thread_num = atoi(optarg);   
                 break;
+            case 'm':
+                memory_malloc_type = atoi(optarg);
+                break;
             case '?':
-                printf("Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> \n", argv[0]);
+                printf("Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -m <0: default, 1: private, 2: shared> \n", argv[0]);
                 exit(1);
         }
     }
@@ -179,11 +186,7 @@ int pca_mean_splitter(void *data_in, int req_units, map_args_t *out)
     
     /* Assign a fixed number of rows to each map task */
     if (pca_data->next_start_row >= num_rows) return 0;
-    #ifdef RPMALLOC
-    pca_map_data_t *map_data = (pca_map_data_t *)rpmalloc(sizeof(pca_map_data_t));
-    #else
-    pca_map_data_t *map_data = (pca_map_data_t *)malloc(sizeof(pca_map_data_t));
-    #endif
+    pca_map_data_t *map_data = (pca_map_data_t *)mem_malloc(sizeof(pca_map_data_t));
     /* Allocate last few rows if less than required number of rows */
     if ( (pca_data->next_start_row + req_units) <= num_rows)
     {
@@ -233,11 +236,7 @@ void pca_mean_map(map_args_t *args)
         mean = sum / num_cols;
         emit_intermediate((void *)&matrix[i * num_cols], (void *)mean, sizeof(int *));
     }
-    #ifdef RPMALLOC
-    rpfree(data);
-    #else
-    free(data);
-    #endif
+    mem_free(data);
 }
 
 /** mycovcmp()
@@ -279,18 +278,11 @@ int pca_cov_splitter(void *data_in, int req_units, map_args_t *out)
     
     /* Allocate memory for the structures */
 
-    #ifdef RPMALLOC
     CHECK_ERROR((cov_locs = (pca_cov_loc_t *)
-                                  rpmalloc(sizeof(pca_cov_loc_t) * req_units)) == NULL);
+                                  mem_malloc(sizeof(pca_cov_loc_t) * req_units)) == NULL);
     CHECK_ERROR((cov_data = (pca_cov_data_t *)
-                                  rpmalloc(sizeof(pca_cov_data_t))) == NULL);  
-    #else
-    CHECK_ERROR((cov_locs = (pca_cov_loc_t *)
-                                  malloc(sizeof(pca_cov_loc_t) * req_units)) == NULL);
-    CHECK_ERROR((cov_data = (pca_cov_data_t *)
-                                  malloc(sizeof(pca_cov_data_t))) == NULL);    
-    #endif
-                                                                 
+                                  mem_malloc(sizeof(pca_cov_data_t))) == NULL);  
+
     out->length = 1;
     out->data = (void *)cov_data;
     cov_data->size = 0;
@@ -382,23 +374,14 @@ void pca_cov_map(map_args_t *args)
         
         //dprintf("Covariance for <%d, %d> is %d\n", start_idx, cov_idx, *covariance);
 
-        #ifdef RPMALLOC
-        CHECK_ERROR((cov_loc = (pca_cov_loc_t *)rpmalloc(sizeof(pca_cov_loc_t))) == NULL);
-        #else
-        CHECK_ERROR((cov_loc = (pca_cov_loc_t *)malloc(sizeof(pca_cov_loc_t))) == NULL);
-        #endif
+        CHECK_ERROR((cov_loc = (pca_cov_loc_t *)mem_malloc(sizeof(pca_cov_loc_t))) == NULL);
         cov_loc->start_row = cov_data->cov_locs[i].start_row;
         cov_loc->cov_row = cov_data->cov_locs[i].cov_row;
         emit_intermediate((void *)cov_loc, (void *)covariance, sizeof(pca_cov_loc_t));
     }
 
-    #ifdef RPMALLOC
-    rpfree(cov_data->cov_locs);
-    rpfree(cov_data);
-    #else
-    free(cov_data->cov_locs);
-    free(cov_data);
-    #endif
+    mem_free(cov_data->cov_locs);
+    mem_free(cov_data);
 }
 
 
@@ -415,14 +398,14 @@ int main(int argc, char **argv)
     // gettimeofday(&begin, NULL);
     get_time (&begin);
     
-    parse_args(argc, argv);    
+    parse_args(argc, argv);   
+
+    #ifdef RPMALLOC
+        rpmalloc_initialize();
+    #endif
     
     // Allocate space for the matrix
-    #ifdef RPMALLOC
-    pca_data.matrix = (int *)rpmalloc(sizeof(int) * num_rows * num_cols);
-    #else
-    pca_data.matrix = (int *)malloc(sizeof(int) * num_rows * num_cols);
-    #endif
+    pca_data.matrix = (int *)mem_malloc(sizeof(int) * num_rows * num_cols);
     
     //Generate random values for all the points in the matrix 
     generate_points(pca_data.matrix, num_rows, num_cols);
@@ -545,23 +528,13 @@ int main(int argc, char **argv)
             num_rows--;
             cnt = 0;
         }
-        #ifdef RPMALLOC
-        rpfree(pca_cov_vals.data[i].key);
-        #else
-        free(pca_cov_vals.data[i].key);
-        #endif
+        mem_free(pca_cov_vals.data[i].key);
     }
     dprintf ("%" PRIdPTR "\n", sum);
     
-    #ifdef RPMALLOC
-    rpfree (pca_cov_vals.data);
-    rpfree (pca_mean_vals.data);
-    rpfree (pca_data.matrix);
-    #else
-    free (pca_cov_vals.data);
-    free (pca_mean_vals.data);
-    free (pca_data.matrix);
-    #endif
+    mem_free (pca_cov_vals.data);
+    mem_free (pca_mean_vals.data);
+    mem_free (pca_data.matrix);
 
     get_time (&end);
     // gettimeofday(&end, NULL);
@@ -570,6 +543,10 @@ int main(int argc, char **argv)
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
+    #ifdef RPMALLOC
+        rpmalloc_finalize();
+    #endif
 
     fprintf(stderr, "done\n");
 
