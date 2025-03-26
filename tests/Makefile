@@ -41,13 +41,13 @@ APPS := \
         kmeans \
         matrix_multiply \
         word_count \
-        basic \
 #
 default: all
 
 all: 
 	@$(foreach APP, $(APPS), \
-            $(MAKE) -C $(APP) --no-print-directory;)
+            $(MAKE) -C $(APP) --no-print-directory $(APP); \
+            rsync -a $(APP)/$(APP) ./bin;)
 
 clean:
 	@$(foreach APP, $(APPS), \
