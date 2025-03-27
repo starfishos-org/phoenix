@@ -58,6 +58,12 @@
       assert ((a) == 0);                                     \
    }
 
+extern int memory_malloc_type;
+extern void *mem_malloc(size_t size);
+extern void *mem_calloc(size_t num, size_t size);
+extern void *mem_realloc(void *ptr, size_t size);
+extern void mem_free(void *ptr);
+
 static inline void *MALLOC(size_t size)
 {
    void * temp = malloc(size);

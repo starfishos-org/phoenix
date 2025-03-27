@@ -38,10 +38,6 @@
 #include "stddefines.h"
 #include "map_reduce.h"
 
-extern void *mem_malloc(size_t size);
-extern void mem_free(void *ptr);
-extern int memory_malloc_type;
-
 typedef struct {
     int *matrix;
     keyval_t *mean;
@@ -88,7 +84,7 @@ void parse_args(int argc, char **argv)
     num_rows = DEF_NUM_ROWS;
     num_cols = DEF_NUM_COLS;
     grid_size = DEF_GRID_SIZE;
-    thread_num = 0;
+    thread_num = 1;
 
     while ((c = getopt(argc, argv, "r:c:t:s:m:")) != EOF) 
     {
@@ -109,20 +105,21 @@ void parse_args(int argc, char **argv)
                 memory_malloc_type = atoi(optarg);
                 break;
             case '?':
-                printf("Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -m <0: default, 1: private, 2: shared> \n", argv[0]);
+                fprintf(stderr, "Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -m <0: default, 1: private, 2: shared> \n", argv[0]);
                 exit(1);
         }
     }
     
     if (num_rows <= 0 || num_cols <= 0 || grid_size <= 0) {
-        printf("Illegal argument value. All values must be numeric and greater than 0\n");
+        fprintf(stderr, "Illegal argument value. All values must be numeric and greater than 0\n");
         exit(1);
     }
 
-    printf("Number of rows = %d\n", num_rows);
-    printf("Number of cols = %d\n", num_cols);
-    printf("Max value for each element = %d\n", grid_size);    
-    printf("Number of threads=%d\n", thread_num);  
+    fprintf(stderr, "Number of rows = %d\n", num_rows);
+    fprintf(stderr, "Number of cols = %d\n", num_cols);
+    fprintf(stderr, "Max value for each element = %d\n", grid_size);   
+    fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type); 
+    fprintf(stderr, "Number of threads=%d\n", thread_num);  
 }
 
 /** dump_points()
@@ -439,7 +436,7 @@ int main(int argc, char **argv)
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
     
-    printf("PCA Mean: Calling MapReduce Scheduler\n");
+    fprintf(stderr, "PCA Mean: Calling MapReduce Scheduler\n");
 
     get_time (&end);
 
@@ -457,7 +454,7 @@ int main(int argc, char **argv)
 
     get_time (&begin);
 
-    printf("PCA Mean: MapReduce Completed\n"); 
+    fprintf(stderr, "PCA Mean: MapReduce Completed\n"); 
     
     assert (pca_mean_vals.length == num_rows);
     //dprintf("Mean vector:\n");
@@ -488,7 +485,7 @@ int main(int argc, char **argv)
     map_reduce_args.key_match_factor = atoi(GETENV("MR_KEYMATCHFACTOR"));//2;
     map_reduce_args.use_one_queue_per_task = true;
     
-    printf("PCA Cov: Calling MapReduce Scheduler\n");
+    fprintf(stderr, "PCA Cov: Calling MapReduce Scheduler\n");
 
     get_time (&end);
 
@@ -509,7 +506,7 @@ int main(int argc, char **argv)
 
     CHECK_ERROR (map_reduce_finalize ());
     
-    printf("PCA Cov: MapReduce Completed\n"); 
+    fprintf(stderr, "PCA Cov: MapReduce Completed\n"); 
 
     assert(pca_cov_vals.length == ((((num_rows * num_rows) - num_rows)/2) + num_rows));
     

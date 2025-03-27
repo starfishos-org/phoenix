@@ -50,6 +50,7 @@ int num_means; // number of clusters
 int grid_size; // size of each dimension of vector space
 int modified;
 int num_pts = 0;
+extern int thread_num;
 
 typedef struct {
     int *points;
@@ -114,8 +115,8 @@ void parse_args(int argc, char **argv)
     num_means = DEF_NUM_MEANS;
     dim = DEF_DIM;
     grid_size = DEF_GRID_SIZE;
-    
-    while ((c = getopt(argc, argv, "d:c:p:s:")) != EOF) 
+    thread_num = 1;
+    while ((c = getopt(argc, argv, "d:c:p:s:m:t:")) != EOF) 
     {
         switch (c) {
             case 'd':
@@ -130,13 +131,19 @@ void parse_args(int argc, char **argv)
             case 's':
                 grid_size = atoi(optarg);
                 break;
+            case 'm':
+                memory_malloc_type = atoi(optarg);
+                break;
+            case 't':   
+                thread_num = atoi(optarg);
+                break;
             case '?':
-                printf("Usage: %s -d <vector dimension> -c <num clusters> -p <num points> -s <max value>\n", argv[0]);
+                printf("Usage: %s -d <vector dimension> -c <num clusters> -p <num points> -s <max value> -m <0: default, 1: private, 2: shared> -t <thread_num>\n", argv[0]);
                 exit(1);
         }
     }
     
-    if (dim <= 0 || num_means <= 0 || num_points <= 0 || grid_size <= 0) {
+    if (dim <= 0 || num_means <= 0 || num_points <= 0 || grid_size <= 0 || thread_num <= 0) {
         printf("Illegal argument value. All values must be numeric and greater than 0\n");
         exit(1);
     }
@@ -145,6 +152,7 @@ void parse_args(int argc, char **argv)
     printf("Number of clusters = %d\n", num_means);
     printf("Number of points = %d\n", num_points);
     printf("Size of each dimension = %d\n", grid_size);    
+    printf("Thread number = %d\n", thread_num);
 }
 
 /** generate_points()
@@ -273,7 +281,7 @@ int kmeans_splitter(void *data_in, int req_units, map_args_t *out)
     
     if (kmeans_data->next_point >= num_points) return 0;
     
-    out_data = (kmeans_map_data_t *)malloc(sizeof(kmeans_map_data_t));
+    out_data = (kmeans_map_data_t *)mem_malloc(sizeof(kmeans_map_data_t));
     out->length = 1;
     out->data = (void *)out_data;
     
@@ -316,7 +324,7 @@ void kmeans_map(map_args_t *args)
     
     kmeans_map_data_t *map_data = args->data;
     find_clusters(map_data->points, map_data->means, map_data->clusters, map_data->length);  
-    free(args->data);
+    mem_free(args->data);
 }
 
 /** kmeans_reduce()
@@ -333,8 +341,8 @@ void kmeans_reduce(void *key_in, iterator_t *itr)
     void *val;
     int vals_len = iter_size (itr);
     
-    sum = (int *)calloc(dim, sizeof(int));
-    mean = (int *)malloc(dim * sizeof(int));
+    sum = (int *)mem_calloc(dim, sizeof(int));
+    mean = (int *)mem_malloc(dim * sizeof(int));
     
     i = 0;
     while (iter_next (itr, &val))
@@ -349,7 +357,7 @@ void kmeans_reduce(void *key_in, iterator_t *itr)
         mean[i] = sum[i] / vals_len;
     }
     
-    free(sum);
+    mem_free(sum);
     emit(key_in, (void *)mean);
 }
 
@@ -371,23 +379,27 @@ int main(int argc, char **argv)
     
     parse_args(argc, argv);    
     
+    #ifdef RPMALLOC
+        rpmalloc_initialize();
+    #endif
+    
     // get points
-    kmeans_data.points = (int *)malloc(sizeof(int) * num_points * dim);
+    kmeans_data.points = (int *)mem_malloc(sizeof(int) * num_points * dim);
     generate_points(kmeans_data.points, num_points);
     
     // get means
-    kmeans_data.means = (keyval_t *)malloc(sizeof(keyval_t) * num_means);
-    means = malloc(sizeof(int) * dim * num_means);
+    kmeans_data.means = (keyval_t *)mem_malloc(sizeof(keyval_t) * num_means);
+    means = mem_malloc(sizeof(int) * dim * num_means);
     for (i=0; i<num_means; i++) {
         kmeans_data.means[i].val = &means[i * dim];
-        kmeans_data.means[i].key = malloc(sizeof(void *));
+        kmeans_data.means[i].key = mem_malloc(sizeof(void *));
     } 
     generate_means(kmeans_data.means, num_means);
     
     kmeans_data.next_point = 0;
     kmeans_data.unit_size = sizeof(int) * dim;
  
-    kmeans_data.clusters = (int *)malloc(sizeof(int) * num_points);
+    kmeans_data.clusters = (int *)mem_malloc(sizeof(int) * num_points);
     memset(kmeans_data.clusters, -1, sizeof(int) * num_points);
     
     modified = true;
@@ -442,10 +454,10 @@ int main(int argc, char **argv)
         {
             int mean_idx = *((int *)(kmeans_vals.data[i].key));
             if (first_run == false)
-                free(kmeans_data.means[mean_idx].val);
+                mem_free(kmeans_data.means[mean_idx].val);
             kmeans_data.means[mean_idx] = kmeans_vals.data[i];
         }
-        if (kmeans_vals.length > 0) free(kmeans_vals.data);
+        if (kmeans_vals.length > 0) mem_free(kmeans_vals.data);
         get_time (&end);
 
 #ifdef TIMING
@@ -467,25 +479,31 @@ int main(int argc, char **argv)
     printf("KMeans: MapReduce Completed\n");  
 
     dprintf("\n\nFinal means:\n");
-    dump_means(kmeans_data.means, num_means);
+    // dump_means(kmeans_data.means, num_means);
 
-    free(kmeans_data.points);
+    mem_free(kmeans_data.points);
     
     for (i = 0; i < num_means; i++) 
     {
-        free(kmeans_data.means[i].key);
-        free(kmeans_data.means[i].val);
+        mem_free(kmeans_data.means[i].key);
+        mem_free(kmeans_data.means[i].val);
     }
-    free (kmeans_data.means);
-    free (means);
+    mem_free (kmeans_data.means);
+    mem_free (means);
     
-    free(kmeans_data.clusters);
+    mem_free(kmeans_data.clusters);
 
     get_time (&end);
 
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
+    #ifdef RPMALLOC
+        rpmalloc_finalize();
+    #endif
+
+    fprintf(stderr, "done\n");
 
     return 0;
 }

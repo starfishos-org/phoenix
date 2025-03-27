@@ -71,6 +71,44 @@ typedef struct {
  char *key3_final;
  char *key4_final;
 
+char *fname_keys;
+extern int thread_num;
+extern int memory_malloc_type;
+
+void parse_args(int argc, char **argv)
+{
+    int c;
+    extern char *optarg;
+    extern int optind;
+    thread_num = 1;
+
+    while ((c = getopt(argc, argv, "f:m:t:")) != EOF) 
+    {
+        switch (c) {
+            case 'f':
+                fname_keys = optarg;
+                break;
+            case 't':
+                thread_num = atoi(optarg);   
+                break;
+            case 'm':
+                memory_malloc_type = atoi(optarg);
+                break;
+            case '?':
+                fprintf(stderr, "Usage: %s -f <keys filename> -t <thread_num> -m <0: default, 1: private, 2: shared>\n", argv[0]);
+                exit(1);
+        }
+    }
+    
+    if (thread_num <= 0) {
+        fprintf(stderr, "Illegal argument value. All values must be numeric and greater than 0\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "Keys filename=%s\n", fname_keys);
+    fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type);
+    fprintf(stderr, "Number of threads=%d\n", thread_num);
+}
 /** getnextline()
  *  Function to get the next word
  */
@@ -125,7 +163,7 @@ int string_match_splitter(void *data_in, int req_units, map_args_t *out)
 {
     /* Make a copy of the mm_data structure */
     str_data_t * data = (str_data_t *)data_in; 
-    str_map_data_t *map_data = (str_map_data_t *)malloc(sizeof(str_map_data_t));
+    str_map_data_t *map_data = (str_map_data_t *)mem_malloc(sizeof(str_map_data_t));
 
     map_data->encrypt_file = data->encrypt_file;
     map_data->keys_file = data->keys_file + data->bytes_comp;
@@ -192,8 +230,8 @@ void string_match_map(map_args_t *args)
 
     int key_len, total_len = 0;
     char * key_file = data_in->keys_file;
-    char * cur_word = malloc(MAX_REC_LEN);
-    char * cur_word_final = malloc(MAX_REC_LEN);
+    char * cur_word = mem_malloc(MAX_REC_LEN);
+    char * cur_word_final = mem_malloc(MAX_REC_LEN);
     bzero(cur_word, MAX_REC_LEN);
     bzero(cur_word_final, MAX_REC_LEN);
 
@@ -218,8 +256,8 @@ void string_match_map(map_args_t *args)
         bzero(cur_word_final, MAX_REC_LEN);
         total_len+=key_len;
     }
-    free(cur_word);
-    free(args->data);
+    mem_free(cur_word);
+    mem_free(args->data);
 }
 
 int main(int argc, char *argv[]) {
@@ -227,21 +265,14 @@ int main(int argc, char *argv[]) {
     int fd_keys;
     char *fdata_keys;
     struct stat finfo_keys;
-    char *fname_keys;
 
     struct timeval begin, end;
 
     get_time (&begin);
 
-    if (argv[1] == NULL)
-    {
-        printf("USAGE: %s <keys filename>\n", argv[0]);
-        exit(1);
-    }
-    fname_keys = argv[1];
+    parse_args(argc, argv);
 
     struct timeval starttime,endtime;
-    srand( (unsigned)time( NULL ) );
 
     printf("String Match: Running...\n");
 
@@ -251,12 +282,20 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_keys, &finfo_keys) < 0);
 #ifndef NO_MMAP
     // Memory map the file
-    CHECK_ERROR((fdata_keys= mmap(0, finfo_keys.st_size + 1,
-        PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_keys, 0)) == NULL);
+    if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
+        CHECK_ERROR((fdata_keys= mmap(0, finfo_keys.st_size + 1,
+            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_keys, 0)) == NULL);
+    } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
+        CHECK_ERROR((fdata_keys= mmap(0, finfo_keys.st_size + 1,
+            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_keys, 0)) == NULL);
+    } else {
+        CHECK_ERROR((fdata_keys= mmap(0, finfo_keys.st_size + 1,
+            PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_keys, 0)) == NULL);
+    }
 #else
     int ret;
 
-    fdata_keys = (char *)malloc (finfo_keys.st_size);
+    fdata_keys = (char *)mem_malloc (finfo_keys.st_size);
     CHECK_ERROR (fdata_keys == NULL);
 
     ret = read (fd_keys, fdata_keys, finfo_keys.st_size);
@@ -299,10 +338,10 @@ int main(int argc, char *argv[]) {
 
     printf("String Match: Calling String Match\n");
 
-	key1_final = malloc(strlen(key1));
-	key2_final = malloc(strlen(key2));
-	key3_final = malloc(strlen(key3));
-	key4_final = malloc(strlen(key4));
+	key1_final = mem_malloc(strlen(key1));
+	key2_final = mem_malloc(strlen(key2));
+	key3_final = mem_malloc(strlen(key3));
+	key4_final = mem_malloc(strlen(key4));
 
 	compute_hashes(key1, key1_final);
 	compute_hashes(key2, key2_final);
@@ -331,17 +370,17 @@ int main(int argc, char *argv[]) {
 
     get_time(&endtime);
 
-    free(key1_final);
-    free(key2_final);
-    free(key3_final);
-    free(key4_final);
+    mem_free(key1_final);
+    mem_free(key2_final);
+    mem_free(key3_final);
+    mem_free(key4_final);
 
     printf("String Match: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
 #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata_keys, finfo_keys.st_size + 1) < 0);
 #else
-    free (fdata_keys);
+    mem_free (fdata_keys);
 #endif
     CHECK_ERROR(close(fd_keys) < 0);
 
