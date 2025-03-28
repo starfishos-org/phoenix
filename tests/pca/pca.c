@@ -396,10 +396,6 @@ int main(int argc, char **argv)
     get_time (&begin);
     
     parse_args(argc, argv);   
-
-    #ifdef RPMALLOC
-        rpmalloc_initialize();
-    #endif
     
     // Allocate space for the matrix
     pca_data.matrix = (int *)mem_malloc(sizeof(int) * num_rows * num_cols);
@@ -540,10 +536,6 @@ int main(int argc, char **argv)
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
-
-    #ifdef RPMALLOC
-        rpmalloc_finalize();
-    #endif
 
     fprintf(stderr, "done\n");
 

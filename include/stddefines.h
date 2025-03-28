@@ -40,12 +40,6 @@
 
 #define TIMING
 // #define TIMING0
-#define RPMALLOC
-// #define MALLOC_MIXED
-
-#ifdef RPMALLOC
-#include <rpmalloc.h>
-#endif
 
 /* Debug printf */
 #define dprintf(...) fprintf(stdout, __VA_ARGS__)

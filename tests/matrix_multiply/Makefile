@@ -34,9 +34,8 @@ include $(HOME)/Defines.mk
 LIBS += -L$(HOME)/$(LIB_DIR) -l$(PHOENIX)
 
 MM_OBJS = matrix_multiply.o
-MM_CXL_OBJS = matrix_multiply_cxl.o
 
-PROGS = matrix_multiply matrix_multiply_cxl
+PROGS = matrix_multiply
 
 .PHONY: default all clean
 
@@ -46,9 +45,6 @@ all: $(PROGS)
 
 matrix_multiply: $(MM_OBJS) $(LIB_DEP)
 	$(CC) $(CFLAGS) -o $@ $(MM_OBJS) $(LIBS)
-
-matrix_multiply_cxl: $(MM_CXL_OBJS) $(LIB_DEP)
-	$(CC) $(CFLAGS) -o $@ $(MM_CXL_OBJS) $(LIBS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@ -I$(HOME)/$(INC_DIR)

@@ -256,10 +256,6 @@ int main(int argc, char *argv[]) {
 
     parse_args(argc, argv);
 
-    #ifdef RPMALLOC
-        rpmalloc_initialize();
-    #endif
-
     /* If the matrix files do not exist, create them */
     if(create_files)
     {
@@ -443,10 +439,6 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "matrix multiply finished\n");
 
     fprintf(stderr, "done\n");
-
-    #ifdef RPMALLOC
-        rpmalloc_finalize();
-    #endif
 
     return 0;
 }

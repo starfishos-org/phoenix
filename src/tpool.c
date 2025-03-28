@@ -240,11 +240,6 @@ int tpool_destroy (tpool_t *tpool)
 
 static void* thread_loop (void *arg)
 {
-
-    #ifdef RPMALLOC
-        rpmalloc_thread_initialize();
-    #endif
-
     thread_arg_t    *thread_arg = arg;
     thread_func     thread_func;
     void            *thread_func_arg;
@@ -281,10 +276,6 @@ static void* thread_loop (void *arg)
         /* Everybody's done. */
         CHECK_ERROR (sem_post (thread_arg->sem_all_workers_done));
     }
-
-    #ifdef RPMALLOC
-        rpmalloc_thread_finalize(0);
-    #endif
 
     return NULL;
 }

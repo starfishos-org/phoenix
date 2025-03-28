@@ -379,10 +379,6 @@ int main(int argc, char **argv)
     
     parse_args(argc, argv);    
     
-    #ifdef RPMALLOC
-        rpmalloc_initialize();
-    #endif
-    
     // get points
     kmeans_data.points = (int *)mem_malloc(sizeof(int) * num_points * dim);
     generate_points(kmeans_data.points, num_points);
@@ -498,10 +494,6 @@ int main(int argc, char **argv)
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
-
-    #ifdef RPMALLOC
-        rpmalloc_finalize();
-    #endif
 
     fprintf(stderr, "done\n");
 
