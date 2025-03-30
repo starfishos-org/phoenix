@@ -4,4 +4,4 @@ if(${OS} STREQUAL "CHCORE")
 endif()
 add_executable(${TEST_NAME} word_count.c sort.c)
 
-target_link_libraries(${TEST_NAME} PRIVATE ${LIB_NAME})
+target_link_libraries(${TEST_NAME} PRIVATE ${LINK_LIBS})

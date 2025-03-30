@@ -2,6 +2,8 @@
 
 file(GLOB TEST_DIRS "*/")
 
+set(LINK_LIBS ${LIB_NAME} rpmalloc libc-static)
+
 foreach(TEST_DIR ${TEST_DIRS})
     get_filename_component(TEST_NAME ${TEST_DIR} NAME)
     if (${TEST_NAME} STREQUAL "CMakeLists.txt")
