@@ -131,9 +131,11 @@ void parse_args(int argc, char **argv)
             case 's':
                 grid_size = atoi(optarg);
                 break;
+            #ifdef _CHCORE_
             case 'm':
                 memory_malloc_type = atoi(optarg);
                 break;
+            #endif
             case 't':   
                 thread_num = atoi(optarg);
                 break;

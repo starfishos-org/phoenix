@@ -101,9 +101,11 @@ void parse_args(int argc, char **argv)
             case 't':
                 thread_num = atoi(optarg);   
                 break;
+            #ifdef _CHCORE_
             case 'm':
                 memory_malloc_type = atoi(optarg);
                 break;
+            #endif
             case '?':
                 fprintf(stderr, "Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -m <0: default, 1: private, 2: shared> \n", argv[0]);
                 exit(1);
@@ -118,7 +120,9 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "Number of rows = %d\n", num_rows);
     fprintf(stderr, "Number of cols = %d\n", num_cols);
     fprintf(stderr, "Max value for each element = %d\n", grid_size);   
+    #ifdef _CHCORE_
     fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type); 
+    #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);  
 }
 

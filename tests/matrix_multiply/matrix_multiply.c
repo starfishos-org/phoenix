@@ -67,7 +67,6 @@ int matrix_len = 0;
 int row_block_len = 0;
 int file_size = 0;
 extern int thread_num;
-extern int memory_malloc_type;
 
 void parse_args(int argc, char **argv) 
 {
@@ -91,9 +90,11 @@ void parse_args(int argc, char **argv)
             case 't':
                 thread_num = atoi(optarg);   
                 break;
+            #ifdef _CHCORE_
             case 'm':
                 memory_malloc_type = atoi(optarg);
                 break;
+            #endif
             case 'c':
                 create_files = atoi(optarg);
                 break;
@@ -113,7 +114,9 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "***** file size is %d\n", file_size);
     fprintf(stderr, "MatrixMult: Side of the matrix is %d\n", matrix_len);
     fprintf(stderr, "MatrixMult: Row Block Len is %d\n", row_block_len);
+    #ifdef _CHCORE_
     fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type);
+    #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);
 }
 
@@ -298,16 +301,21 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_A, &finfo_A) < 0);
 #ifndef NO_MMAP
     // Memory map the file
-    if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
-        CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_A, 0)) == NULL);
-    } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
-        CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_A, 0)) == NULL);
-    } else {
+    #ifdef _CHCORE_
+        if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
+            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_A, 0)) == NULL);
+        } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
+            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_A, 0)) == NULL);
+        } else {
+            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
+        }
+    #else
         CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
             PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
-    }
+    #endif
 #else
     int ret;
 
@@ -324,16 +332,21 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR(fstat(fd_B, &finfo_B) < 0);
 #ifndef NO_MMAP
     // Memory map the file
-    if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
-        CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_B, 0)) == NULL);
-    } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
-        CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_B, 0)) == NULL);
-    } else {
+    #ifdef _CHCORE_
+        if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
+            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_B, 0)) == NULL);
+        } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
+            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_B, 0)) == NULL);
+        } else {
+            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+                PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
+        }
+    #else
         CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
             PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
-    }
+    #endif
 #else
     fdata_B = (char *)mem_malloc(file_size);
     CHECK_ERROR (fdata_B == NULL);

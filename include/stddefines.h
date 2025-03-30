@@ -33,12 +33,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <chcore/defs.h>
-
 
 // #define _CHCORE_
 
-#define TIMING
+// #define TIMING
 // #define TIMING0
 
 /* Debug printf */
@@ -51,8 +49,9 @@
       perror("Error at line\n\t" #a "\nSystem Msg");         \
       assert ((a) == 0);                                     \
    }
-
+#ifdef _CHCORE_
 extern int memory_malloc_type;
+#endif
 extern void *mem_malloc(size_t size);
 extern void *mem_calloc(size_t num, size_t size);
 extern void *mem_realloc(void *ptr, size_t size);
