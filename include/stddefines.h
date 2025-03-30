@@ -33,6 +33,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#if defined(_CHCORE_)
+#include <chcore/defs.h>
+#endif
+
 
 // #define _CHCORE_
 

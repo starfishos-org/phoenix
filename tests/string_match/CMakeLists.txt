@@ -1,2 +1,6 @@
-add_executable(string_match string_match.c)
-target_link_libraries(string_match PRIVATE ${LIB_NAME})
+set(TEST_NAME string_match)
+if(${OS} STREQUAL "CHCORE")
+    set(TEST_NAME ${TEST_NAME}.bin)
+endif()
+add_executable(${TEST_NAME} string_match.c)
+target_link_libraries(${TEST_NAME} PRIVATE ${LIB_NAME})

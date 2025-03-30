@@ -1,2 +1,6 @@
-add_executable(histogram histogram.c)
-target_link_libraries(histogram PRIVATE ${LIB_NAME})
+set(TEST_NAME histogram)
+if(${OS} STREQUAL "CHCORE")
+    set(TEST_NAME ${TEST_NAME}.bin)
+endif()
+add_executable(${TEST_NAME} histogram.c)
+target_link_libraries(${TEST_NAME} PRIVATE ${LIB_NAME})

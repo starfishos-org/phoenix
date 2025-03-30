@@ -24,8 +24,8 @@ message(STATUS "OS: ${OS}")
 add_subdirectory(${SRC_DIR})
 add_subdirectory(${TESTS_DIR})
 
-target_compile_definitions(${LIB_NAME} PRIVATE "_${OS}_" "_${ARCH}_")
+target_compile_definitions(${LIB_NAME} PUBLIC "_${OS}_" "_${ARCH}_")
 
 if(BREAKDOWN)
-    target_compile_definitions(${LIB_NAME} PRIVATE "TIMING")
+    target_compile_definitions(${LIB_NAME} PUBLIC "TIMING")
 endif()

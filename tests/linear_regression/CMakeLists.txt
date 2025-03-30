@@ -1,2 +1,6 @@
-add_executable(linear_regression linear_regression.c)
-target_link_libraries(linear_regression PRIVATE ${LIB_NAME})
+set(TEST_NAME linear_regression)
+if(${OS} STREQUAL "CHCORE")
+    set(TEST_NAME ${TEST_NAME}.bin)
+endif()
+add_executable(${TEST_NAME} linear_regression.c)
+target_link_libraries(${TEST_NAME} PRIVATE ${LIB_NAME})

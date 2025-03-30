@@ -1,2 +1,6 @@
-add_executable(matrix_multiply matrix_multiply.c)
-target_link_libraries(matrix_multiply PRIVATE ${LIB_NAME})
+set(TEST_NAME matrix_multiply)
+if(${OS} STREQUAL "CHCORE")
+    set(TEST_NAME ${TEST_NAME}.bin)
+endif()
+add_executable(${TEST_NAME} matrix_multiply.c)
+target_link_libraries(${TEST_NAME} PRIVATE ${LIB_NAME})
