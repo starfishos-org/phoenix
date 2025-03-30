@@ -274,8 +274,6 @@ int main(int argc, char *argv[]) {
 
     parse_args(argc, argv);
 
-    struct timeval starttime,endtime;
-
     printf("String Match: Running...\n");
 
     // Read in the file
@@ -355,8 +353,6 @@ int main(int argc, char *argv[]) {
 	compute_hashes(key3, key3_final);
 	compute_hashes(key4, key4_final);
 
-    get_time(&starttime);
-
     get_time (&end);
 
 #ifdef TIMING
@@ -375,14 +371,10 @@ int main(int argc, char *argv[]) {
 
     CHECK_ERROR (map_reduce_finalize ());
 
-    get_time(&endtime);
-
     mem_free(key1_final);
     mem_free(key2_final);
     mem_free(key3_final);
     mem_free(key4_final);
-
-    printf("String Match: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
 #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata_keys, finfo_keys.st_size + 1) < 0);

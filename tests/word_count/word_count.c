@@ -239,8 +239,6 @@ int main(int argc, char *argv[])
     struct stat finfo;
     char * fname, * disp_num_str;
 
-    struct timeval starttime,endtime;
-
     get_time (&begin);
 
     // Make sure a filename is specified
@@ -309,8 +307,6 @@ int main(int argc, char *argv[])
 
     printf("Wordcount: Calling MapReduce Scheduler Wordcount\n");
 
-    get_time(&starttime);
-
     get_time (&end);
 
 #ifdef TIMING
@@ -326,10 +322,6 @@ int main(int argc, char *argv[])
 #endif
 
     get_time (&begin);
-
-    get_time(&endtime);
-
-    printf("Wordcount: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
     printf("Wordcount: MapReduce Completed\n");
 

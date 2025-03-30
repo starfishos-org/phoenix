@@ -168,7 +168,6 @@ int main(int argc, char *argv[]) {
     struct stat finfo;
     int i;
 
-    struct timeval starttime,endtime;
     struct timeval begin, end;
 
     get_time (&begin);
@@ -225,8 +224,6 @@ int main(int argc, char *argv[]) {
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
 
     printf("Linear Regression: Calling MapReduce Scheduler\n");
-
-    get_time(&starttime);
 
     get_time (&end);
 
@@ -289,10 +286,6 @@ int main(int argc, char *argv[]) {
     xbar = (double)SX_ll / n;
     ybar = (double)SY_ll / n;
     r2 = (double)(n*SXY - SX*SY) * (n*SXY - SX*SY) / ((n*SXX - SX*SX)*(n*SYY - SY*SY));
-
-    get_time(&endtime);
-
-    printf("Linear Regression: Completed %ld\n",(endtime.tv_sec - starttime.tv_sec));
 
     printf("Linear Regression Results:\n");
     printf("\ta     = %lf\n", a);

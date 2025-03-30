@@ -573,6 +573,8 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     uint64_t        combiner_time = 0;
 #endif
 
+    (void)ret_val;
+
     assert(th_arg != NULL);
 
     task_type = th_arg->task_type;
@@ -687,6 +689,9 @@ static bool map_worker_do_next_task (
     oneOutputQueuePerMapTask = env->oneOutputQueuePerMapTask;
 
     alloc_len = env->intermediate_task_alloc_len;
+
+    (void)oneOutputQueuePerMapTask;
+    (void)alloc_len;
 
     /* Get new map task. */
     if (tq_dequeue (env->taskQueue, &map_task, lgrp, thread_index) == 0) {
