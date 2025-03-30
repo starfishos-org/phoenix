@@ -2,8 +2,6 @@
 
 file(GLOB TEST_DIRS "*/")
 
-set(LINK_LIBS ${LIB_NAME} rpmalloc libc-static)
-
 foreach(TEST_DIR ${TEST_DIRS})
     get_filename_component(TEST_NAME ${TEST_DIR} NAME)
     if (${TEST_NAME} STREQUAL "CMakeLists.txt")
@@ -11,7 +9,9 @@ foreach(TEST_DIR ${TEST_DIRS})
     endif()
     add_subdirectory(${TEST_DIR})
     if (${OS} STREQUAL "CHCORE")
-        target_link_options(${TEST_NAME}.bin PRIVATE -static)
+        if (CHCORE_USER_STATIC_APPS)
+            target_link_options(${TEST_NAME}.bin PRIVATE -static)
+        endif()
         set(TESTS ${TESTS} ${TEST_NAME}.bin)
     else()
         set(TESTS ${TESTS} ${TEST_NAME})

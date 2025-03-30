@@ -13,6 +13,12 @@ set(LIB_NAME "phoenix-lib")
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
 
+if (CHCORE_USER_STATIC_APPS)
+    set(LINK_LIBS ${LIB_NAME} rpmalloc-static libc-static)
+else()
+    set(LINK_LIBS ${LIB_NAME} rpmalloc-shared)
+endif()
+
 option(BREAKDOWN "Build breakdown" ON)
 
 if(CMAKE_C_COMPILER MATCHES "musl-gcc")
