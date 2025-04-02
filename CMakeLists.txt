@@ -10,7 +10,7 @@ set(INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data")
 set(LIB_NAME "phoenix-lib")
 
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE RELEASE)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
 
 option(BREAKDOWN "Build breakdown" ON)
@@ -20,6 +20,8 @@ if(CMAKE_C_COMPILER MATCHES "musl-gcc")
 endif()
 
 message(STATUS "OS: ${OS}")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
 if (${OS} STREQUAL "CHCORE")
     if (CHCORE_USER_STATIC_APPS)
@@ -38,4 +40,8 @@ target_compile_definitions(${LIB_NAME} PUBLIC "_${OS}_" "_${ARCH}_")
 
 if(BREAKDOWN)
     target_compile_definitions(${LIB_NAME} PUBLIC "TIMING")
+endif()
+
+if(${OS} STREQUAL "CHCORE")
+    target_compile_definitions(${LIB_NAME} PUBLIC "DSM_ENABLED")
 endif()

@@ -41,6 +41,46 @@
 #include "map_reduce.h"
 #include "stddefines.h"
 
+char *fname;
+extern int thread_num;
+
+void parse_args(int argc, char **argv) 
+{
+    int c;
+    extern char *optarg;
+    extern int optind;
+
+    thread_num = 1;
+    while ((c = getopt(argc, argv, "f:t:")) != EOF) 
+    {
+        switch (c) {
+            case 'f':
+                fname = malloc(strlen(optarg) + 1);
+                strcpy(fname, optarg);
+                break;
+            case 't':   
+                thread_num = atoi(optarg);
+                break;
+            case '?':
+                printf("Usage: %s -f <filename> -t <thread_num>\n", argv[0]);
+                exit(1);
+        }
+    }
+    
+    if (thread_num <= 0 || fname == NULL) {
+        printf("Illegal argument value. All values must be numeric and greater than 0\n");
+        exit(1);
+    }
+    
+    printf("Thread number = %d\n", thread_num);
+    printf("File name = %s\n", fname);
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+        printf("Failed to open file %s\n", fname);
+        exit(1);
+    }
+    close(fd);
+}
 
 typedef struct {
     char x;
@@ -141,6 +181,17 @@ static void linear_regression_reduce(void *key_in, iterator_t *itr)
     emit(key_in, (void *)sumptr);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC optimize("O0")
+static void access_pages(char *fdata, int size) {
+    volatile char p;
+    for (int i = 0; i < size; i += 4096) {
+        p = (volatile char )fdata[i];
+    }
+    (void)p;
+}
+#pragma GCC diagnostic pop
+
 static void *linear_regression_combiner (iterator_t *itr)
 {
     long long *sumptr = CALLOC(sizeof(long long), 1);
@@ -164,7 +215,6 @@ int main(int argc, char *argv[]) {
     final_data_t final_vals;
     int fd;
     char * fdata;
-    char * fname;
     struct stat finfo;
     int i;
 
@@ -172,19 +222,16 @@ int main(int argc, char *argv[]) {
 
     get_time (&begin);
 
-    // Make sure a filename is specified
-    if (argv[1] == NULL)
-    {
-        printf("USAGE: %s <filename>\n", argv[0]);
-        exit(1);
-    }
-    
-    fname = argv[1];
+    parse_args(argc, argv);
 
     printf("Linear Regression: Running...\n");
     
     // Read in the file
-    CHECK_ERROR((fd = open(fname, O_RDONLY)) < 0);
+    fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+        printf("Failed to open file %s\n", fname);
+        exit(1);
+    }
     // Get the file info (for file length)
     CHECK_ERROR(fstat(fd, &finfo) < 0);
 #ifndef NO_MMAP
@@ -200,6 +247,8 @@ int main(int argc, char *argv[]) {
     ret = read (fd, fdata, finfo.st_size);
     CHECK_ERROR (ret != finfo.st_size);
 #endif
+
+    access_pages(fdata, finfo.st_size);
 
     CHECK_ERROR (map_reduce_init ());
 
@@ -313,6 +362,8 @@ int main(int argc, char *argv[]) {
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
+    fprintf (stderr, "done\n");
 
     return 0;
 }

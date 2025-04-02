@@ -22,6 +22,8 @@ if(${OS} STREQUAL "CHCORE")
     add_custom_target(
         phoenix-copy-data
         COMMAND rsync -a ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/* ${build_ramdisk_dir}/
+        COMMAND rsync -a ${DATA_DIR}/matrix_datafiles/*.txt ${build_ramdisk_dir}/
+        COMMAND rsync -a ${DATA_DIR}/linear_regression_datafiles/key_file_100MB.txt ${build_ramdisk_dir}/
         DEPENDS ${TESTS}
     )
     add_dependencies(ramdisk phoenix-copy-data)

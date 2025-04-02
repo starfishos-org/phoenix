@@ -48,6 +48,55 @@ int swap;        // to indicate if we need to swap byte order of header informat
 short red_keys[256];
 short green_keys[256];
 short blue_keys[256];
+char *fname;
+extern int thread_num;
+
+void parse_args(int argc, char *argv[]) {
+    int c;
+    extern char *optarg;
+    extern int optind;
+
+    thread_num = 1;
+    while ((c = getopt(argc, argv, "f:t:")) != EOF) {
+        switch (c) {
+            case 'f':
+                fname = malloc(strlen(optarg) + 1);
+                strcpy(fname, optarg);
+                break;
+            case 't':
+                thread_num = atoi(optarg);
+                break;
+            case '?':
+                printf("Usage: %s -f <filename> -t <thread_num>\n", argv[0]);
+                exit(1);
+        }
+    }
+    if (fname == NULL) {
+        printf("filename is required\n");
+        exit(1);
+    }
+    if (thread_num <= 0) {
+        printf("thread_num is required\n");
+        exit(1);
+    }
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+        printf("failed to open file\n");
+        exit(1);
+    }
+    close(fd);
+}
+
+#pragma GCC diagnostic push
+#pragma GCC optimize("O0")
+static void access_pages(char *fdata, int size) {
+    volatile char p;
+    for (int i = 0; i < size; i += 4096) {
+        p = (volatile char )fdata[i];
+    }
+    (void)p;
+}
+#pragma GCC diagnostic pop
 
 /* test_endianess
  *
@@ -201,12 +250,12 @@ int main(int argc, char *argv[]) {
     int fd;
     char *fdata;
     struct stat finfo;
-    char * fname;
     struct timeval begin, end;
 
     get_time (&begin);
 
     // Make sure a filename is specified
+    parse_args(argc, argv);
     if (argv[1] == NULL)
     {
         printf("USAGE: %s <bitmap filename>\n", argv[0]);
@@ -239,6 +288,8 @@ int main(int argc, char *argv[]) {
         printf("File is not a valid bitmap file. Exiting\n");
         exit(1);
     }
+
+    access_pages(fdata, finfo.st_size);
     
     test_endianess();     // will set the variable "swap"
     

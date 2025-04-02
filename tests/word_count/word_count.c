@@ -44,6 +44,65 @@
 
 #define DEFAULT_DISP_NUM 10
 
+char *fname;
+int disp_num;
+extern int thread_num;
+
+void parse_args(int argc, char *argv[]) {
+    int c;
+    extern char *optarg;
+    extern int optind;
+
+    thread_num = 1;
+    disp_num = DEFAULT_DISP_NUM;
+    while ((c = getopt(argc, argv, "f:t:n:")) != EOF) {
+        switch (c) {
+            case 'f':
+                fname = malloc(strlen(optarg) + 1);
+                strcpy(fname, optarg);
+                break;
+            case 't':
+                thread_num = atoi(optarg);
+                break;
+            case 'n':
+                disp_num = atoi(optarg);
+                break;
+            case '?':
+                printf("Usage: %s -f <filename> -t <thread_num> -n <disp_num>\n", argv[0]);
+                exit(1);
+        }
+    }
+    if (fname == NULL) {
+        printf("filename is required\n");
+        exit(1);
+    }
+    if (disp_num <= 0) {
+        printf("disp_num is required\n");
+        exit(1);
+    }
+    if (thread_num <= 0) {
+        printf("thread_num is required\n");
+        exit(1);
+    }
+    int fd = open(fname, O_RDONLY);
+    if (fd < 0) {
+        printf("failed to open file\n");
+        exit(1);
+    }
+    close(fd);
+}
+
+#pragma GCC diagnostic push
+#pragma GCC optimize("O0")
+static void access_pages(char *fdata, int size) {
+    volatile char p;
+    for (int i = 0; i < size; i += 4096) {
+        p = (volatile char )fdata[i];
+    }
+    (void)p;
+}
+#pragma GCC diagnostic pop
+
 typedef struct {
     int fpos;
     off_t flen;
@@ -235,21 +294,11 @@ int main(int argc, char *argv[])
     int i;
     int fd;
     char * fdata;
-    int disp_num;
     struct stat finfo;
-    char * fname, * disp_num_str;
 
     get_time (&begin);
 
-    // Make sure a filename is specified
-    if (argv[1] == NULL)
-    {
-        printf("USAGE: %s <filename> [Top # of results to display]\n", argv[0]);
-        exit(1);
-    }
-
-    fname = argv[1];
-    disp_num_str = argv[2];
+    parse_args(argc, argv);
 
     printf("Wordcount: Running...\n");
 
@@ -271,9 +320,7 @@ int main(int argc, char *argv[])
     CHECK_ERROR (ret != finfo.st_size);
 #endif
 
-    // Get the number of results to display
-    CHECK_ERROR((disp_num = (disp_num_str == NULL) ? 
-      DEFAULT_DISP_NUM : atoi(disp_num_str)) <= 0);
+    access_pages(fdata, finfo.st_size);
 
     // Setup splitter args
     wc_data_t wc_data;
@@ -354,6 +401,8 @@ int main(int argc, char *argv[])
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
+    fprintf(stderr, "done\n");
 
     return 0;
 }

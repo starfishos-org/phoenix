@@ -110,8 +110,6 @@ static cpu_set_t* proc_get_full_set(void)
 }
 #endif
 
-#define DSM_ENABLED
-
 /* Bind the calling thread to run on CPU_ID. 
    Returns 0 if successful, -1 if failed. */
 inline int proc_bind_thread (int cpu_id)

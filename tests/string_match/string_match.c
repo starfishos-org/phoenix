@@ -71,6 +71,17 @@ typedef struct {
  char *key3_final;
  char *key4_final;
 
+#pragma GCC diagnostic push
+#pragma GCC optimize("O0")
+static void access_pages(char *fdata, int size) {
+    volatile char p;
+    for (int i = 0; i < size; i += 4096) {
+        p = (volatile char )fdata[i];
+    }
+    (void)p;
+}
+#pragma GCC diagnostic pop
+
 char *fname_keys;
 extern int thread_num;
 void parse_args(int argc, char **argv)
@@ -84,7 +95,8 @@ void parse_args(int argc, char **argv)
     {
         switch (c) {
             case 'f':
-                fname_keys = optarg;
+                fname_keys = malloc(strlen(optarg) + 1);
+                strcpy(fname_keys, optarg);
                 break;
             case 't':
                 thread_num = atoi(optarg);   
@@ -110,6 +122,12 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type);
     #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);
+    int fd = open(fname_keys, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "Failed to open file: %s\n", fname_keys);
+        exit(1);
+    }
+    close(fd);
 }
 /** getnextline()
  *  Function to get the next word
@@ -308,6 +326,7 @@ int main(int argc, char *argv[]) {
 #endif
 
     // Setup splitter args
+    access_pages(fdata_keys, finfo_keys.st_size);
 
     dprintf("Keys Size is %" PRId64 "\n",finfo_keys.st_size);
 
@@ -388,6 +407,8 @@ int main(int argc, char *argv[]) {
 #ifdef TIMING
     fprintf (stderr, "finalize: %u\n", time_diff (&end, &begin));
 #endif
+
+    fprintf(stderr, "done\n");
 
     return 0;
 }

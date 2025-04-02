@@ -42,6 +42,7 @@ typedef struct {
     void            **ret;
     int             *num_workers;
     int             *die;
+    int             cpu_id;
 } thread_arg_t;
 
 struct tpool_t {
@@ -92,6 +93,9 @@ tpool_t* tpool_create (int num_threads)
     CHECK_ERROR (pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM));
     CHECK_ERROR (pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED));
 
+    extern int proc_bind_thread(int cpu_id);
+    proc_bind_thread(0);
+
     tpool->die = 0;
     for (i = 0; i < num_threads; ++i) {
         /* Initialize thread argument. */
@@ -106,6 +110,7 @@ tpool_t* tpool_create (int num_threads)
         tpool->thread_args[i].ret = (void **)mem_malloc (sizeof (void *));
         CHECK_ERROR (tpool->thread_args[i].ret == NULL);
         tpool->thread_args[i].num_workers = &tpool->num_workers;
+        tpool->thread_args[i].cpu_id = i;
         
         ret = pthread_create (
             &tpool->threads[i], &attr, thread_loop, &tpool->thread_args[i]);
@@ -247,6 +252,9 @@ static void* thread_loop (void *arg)
     int             num_workers_done;
 
     assert (thread_arg);
+
+    extern int proc_bind_thread(int cpu_id);
+    proc_bind_thread(thread_arg->cpu_id);
 
     while (1)
     {

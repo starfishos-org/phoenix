@@ -60,6 +60,17 @@ typedef struct {
 	int value;
 } mm_key_t;
 
+#pragma GCC diagnostic push
+#pragma GCC optimize("O0")
+static void access_pages(char *fdata, int size) {
+    volatile char p;
+    for (int i = 0; i < size; i += 4096) {
+        p = (volatile char )fdata[i];
+    }
+    (void)p;
+}
+#pragma GCC diagnostic pop
+
 int count = 0;
 char * fname_A, *fname_B;
 int create_files = 0;
@@ -354,6 +365,9 @@ int main(int argc, char *argv[]) {
     ret = read (fd_B, fdata_B, file_size);
     CHECK_ERROR (ret != file_size);
 #endif
+    // read every page of file
+    access_pages(fdata_A, file_size);
+    access_pages(fdata_B, file_size);
 
     // Setup splitter args
     mm_data_t mm_data;

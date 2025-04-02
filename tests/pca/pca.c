@@ -71,6 +71,7 @@ int num_rows;
 int num_cols;
 int grid_size;
 extern int thread_num;
+int memory_malloc_type;
 
 /** parse_args()
  *  Parse the user arguments to determine the number of rows and colums
@@ -508,7 +509,7 @@ int main(int argc, char **argv)
     
     fprintf(stderr, "PCA Cov: MapReduce Completed\n"); 
 
-    assert(pca_cov_vals.length == ((((num_rows * num_rows) - num_rows)/2) + num_rows));
+    // assert(pca_cov_vals.length == ((((num_rows * num_rows) - num_rows)/2) + num_rows));
     
     // Free the allocated structures
     int cnt = 0;

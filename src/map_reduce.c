@@ -599,6 +599,8 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
         mem_memcpy (th_arg_array[thread_index], th_arg, sizeof (thread_arg_t));
     }
 
+    // proc_bind_thread(0);
+
     start_thread_pool (
         env->tpool, task_type, &th_arg_array[1], num_threads - 1);
 
@@ -749,7 +751,7 @@ map_worker (void *args)
     env->tinfo[thread_index].tid = pthread_self();
 
     /* Bind thread. */
-    CHECK_ERROR (proc_bind_thread (th_arg->cpu_id) != 0);
+    // CHECK_ERROR (proc_bind_thread (th_arg->cpu_id) != 0);
 
     CHECK_ERROR (pthread_setspecific (env_key, env));
 #ifdef TIMING0
@@ -946,7 +948,7 @@ reduce_worker (void *args)
     env->tinfo[thread_index].tid = pthread_self();
 
     /* Bind thread. */
-    CHECK_ERROR (proc_bind_thread (th_arg->cpu_id) != 0);
+    // CHECK_ERROR (proc_bind_thread (th_arg->cpu_id) != 0);
 
     CHECK_ERROR (pthread_setspecific (env_key, env));
 #ifdef TIMING0
@@ -1018,7 +1020,8 @@ merge_worker (void *args)
     else
         cpu = th_arg->cpu_id * (1 << th_arg->merge_round);
 
-    CHECK_ERROR (proc_bind_thread (cpu) != 0);
+    // CHECK_ERROR (proc_bind_thread (cpu) != 0);
+    (void)cpu;
 
     CHECK_ERROR (pthread_setspecific (env_key, env));
 
