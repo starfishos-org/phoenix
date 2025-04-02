@@ -11,3 +11,6 @@
 .vscode
 build
 *.png
+
+matrix_file_A.txt
+matrix_file_B.txt
