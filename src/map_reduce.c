@@ -707,7 +707,7 @@ static bool map_worker_do_next_task (
     thread_func_arg.length = map_task.len;
     thread_func_arg.data = (void *)map_task.data;
 
-    dprintf("Task %d: cpu_id -> %d - Started\n", curr_task, th_arg->cpu_id);
+    // dprintf("Task %d: cpu_id -> %d - Started\n", curr_task, thread_index);
 
     /* Perform map task. */
     get_time0 (&begin);
@@ -718,7 +718,7 @@ static bool map_worker_do_next_task (
     args->run_time = time_diff (&end, &begin);
 #endif
 
-    dprintf("Task %d: cpu_id -> %d - Done\n", curr_task, th_arg->cpu_id);
+    // dprintf("Task %d: cpu_id -> %d - Done\n", curr_task, thread_index);
 
     return true;
 }
@@ -1042,8 +1042,8 @@ merge_worker (void *args)
 
         keyval_arr_t *vals = &th_arg->merge_input[pos];
 
-        dprintf("Thread %d: cpu_id -> %d - Started\n", 
-                    thread_index, th_arg->cpu_id);
+        // dprintf("Thread %d: cpu_id -> %d - Started\n", 
+        //             thread_index, th_arg->cpu_id);
 
         get_time0 (&work_begin);
         merge_results (th_arg->env, vals, length + (thread_index < modlen));
@@ -1053,8 +1053,8 @@ merge_worker (void *args)
         work_time = time_diff (&work_end, &work_begin);
 #endif
 
-        dprintf("Thread %d: cpu_id -> %d - Done\n", 
-                    thread_index, th_arg->cpu_id);
+        // dprintf("Thread %d: cpu_id -> %d - Done\n", 
+        //             thread_index, th_arg->cpu_id);
     }
 
     /* Unbind thread. */

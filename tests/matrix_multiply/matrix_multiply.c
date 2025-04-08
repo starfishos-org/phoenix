@@ -366,8 +366,10 @@ int main(int argc, char *argv[]) {
     CHECK_ERROR (ret != file_size);
 #endif
     // read every page of file
-    access_pages(fdata_A, file_size);
-    access_pages(fdata_B, file_size);
+    #ifdef _CHCORE_
+        access_pages(fdata_A, file_size);
+        access_pages(fdata_B, file_size);
+    #endif
 
     // Setup splitter args
     mm_data_t mm_data;
