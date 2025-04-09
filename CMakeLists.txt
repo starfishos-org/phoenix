@@ -19,8 +19,6 @@ if(CMAKE_C_COMPILER MATCHES "musl-gcc")
     set(OS CHCORE)
 endif()
 
-message(STATUS "OS: ${OS}")
-
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
 if (${OS} STREQUAL "CHCORE")
