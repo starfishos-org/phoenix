@@ -78,6 +78,7 @@ int matrix_len = 0;
 int row_block_len = 0;
 int file_size = 0;
 extern int thread_num;
+int memory_malloc_type;
 
 void parse_args(int argc, char **argv) 
 {

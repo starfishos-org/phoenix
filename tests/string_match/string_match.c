@@ -84,6 +84,8 @@ static void access_pages(char *fdata, int size) {
 
 char *fname_keys;
 extern int thread_num;
+int memory_malloc_type;
+
 void parse_args(int argc, char **argv)
 {
     int c;
