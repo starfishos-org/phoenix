@@ -31,6 +31,17 @@ else()
     set(LINK_LIBS ${LIB_NAME})
 endif()
 
+if(${OS} STREQUAL "CHCORE")
+    add_custom_target(
+        phoenix-copy-data
+        COMMAND rsync -a ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/* ${build_ramdisk_dir}/
+        COMMAND rsync -a ${DATA_DIR}/matrix_datafiles/*.txt ${build_ramdisk_dir}/
+        COMMAND rsync -a ${DATA_DIR}/linear_regression_datafiles/key_file_100MB.txt ${build_ramdisk_dir}/
+        COMMAND rsync -a ${CMAKE_CURRENT_SOURCE_DIR}/matrix_multiply_bind_cpu_chcore.txt ${build_ramdisk_dir}/matrix_multiply_bind_cpu.txt
+    )
+    add_dependencies(ramdisk phoenix-copy-data)
+endif()
+
 add_subdirectory(${SRC_DIR})
 add_subdirectory(${TESTS_DIR})
 
