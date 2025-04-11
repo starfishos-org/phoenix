@@ -346,17 +346,17 @@ int main(int argc, char *argv[]) {
     #ifdef _CHCORE_
         if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
             CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_B, 0)) == NULL);
+                PROT_READ, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_B, 0)) == NULL);
         } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
             CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_B, 0)) == NULL);
+                PROT_READ, MAP_PRIVATE | MAP_FLAG_SHARED, fd_B, 0)) == NULL);
         } else {
             CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
+                PROT_READ, MAP_PRIVATE, fd_B, 0)) == NULL);
         }
     #else
         CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_B, 0)) == NULL);
+            PROT_READ, MAP_PRIVATE, fd_B, 0)) == NULL);
     #endif
 #else
     fdata_B = (char *)mem_malloc(file_size);

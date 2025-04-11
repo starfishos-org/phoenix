@@ -51,6 +51,7 @@ int grid_size; // size of each dimension of vector space
 int modified;
 int num_pts = 0;
 extern int thread_num;
+int memory_malloc_type;
 
 typedef struct {
     int *points;
