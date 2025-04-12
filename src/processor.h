@@ -31,6 +31,7 @@
 
 extern bool thread_bind_cpu_set;
 extern int thread_bind_cpu_list[1024];
+extern char thread_bind_cpu_filename[1024];
 
 extern int parse_cpu_bind_file(char *filename);
 extern int proc_get_num_cpus (void);

@@ -37,6 +37,7 @@
 
 #include "stddefines.h"
 #include "map_reduce.h"
+#include "processor.h"
 
 typedef struct {
     int *matrix;
@@ -87,7 +88,7 @@ void parse_args(int argc, char **argv)
     grid_size = DEF_GRID_SIZE;
     thread_num = 1;
 
-    while ((c = getopt(argc, argv, "r:c:t:s:m:")) != EOF) 
+    while ((c = getopt(argc, argv, "r:c:t:s:i:")) != EOF) 
     {
         switch (c) {
             case 'r':
@@ -103,12 +104,12 @@ void parse_args(int argc, char **argv)
                 thread_num = atoi(optarg);   
                 break;
             #ifdef _CHCORE_
-            case 'm':
-                memory_malloc_type = atoi(optarg);
+            case 'i':
+                strcpy(thread_bind_cpu_filename, optarg);
                 break;
             #endif
             case '?':
-                fprintf(stderr, "Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -m <0: default, 1: private, 2: shared> \n", argv[0]);
+                fprintf(stderr, "Usage: %s -r <num_rows> -c <num_cols> -s <max value> -t <thread_num> -i <thread bind cpu filename>\n", argv[0]);
                 exit(1);
         }
     }
@@ -121,10 +122,19 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "Number of rows = %d\n", num_rows);
     fprintf(stderr, "Number of cols = %d\n", num_cols);
     fprintf(stderr, "Max value for each element = %d\n", grid_size);   
-    #ifdef _CHCORE_
-    fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type); 
-    #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);  
+    #ifdef _CHCORE_
+    if (strlen(thread_bind_cpu_filename) == 0) {
+        fprintf(stderr, "Thread bind cpu filename is not set default to pca_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "pca_bind_cpu.txt");
+    }
+    fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
+    if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
+        fprintf(stderr, "Failed to parse cpu bind file\n");
+    } else {
+        thread_bind_cpu_set = true;
+    }
+    #endif
 }
 
 /** dump_points()

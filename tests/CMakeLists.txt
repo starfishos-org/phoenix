@@ -16,6 +16,7 @@ foreach(TEST_DIR ${TEST_DIRS})
     else()
         set(TESTS ${TESTS} ${TEST_NAME})
     endif()
+    target_compile_definitions(${TEST_NAME}.bin PRIVATE NO_MMAP)
 endforeach()
 
 add_dependencies(phoenix-copy-data ${TESTS})

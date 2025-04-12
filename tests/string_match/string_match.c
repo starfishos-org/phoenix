@@ -42,6 +42,7 @@
 
 #include "map_reduce.h"
 #include "stddefines.h"
+#include "processor.h"
 
 #define DEFAULT_UNIT_SIZE 5
 #define SALT_SIZE 2
@@ -93,7 +94,7 @@ void parse_args(int argc, char **argv)
     extern int optind;
     thread_num = 1;
 
-    while ((c = getopt(argc, argv, "f:m:t:")) != EOF) 
+    while ((c = getopt(argc, argv, "f:i:t:")) != EOF) 
     {
         switch (c) {
             case 'f':
@@ -104,8 +105,8 @@ void parse_args(int argc, char **argv)
                 thread_num = atoi(optarg);   
                 break;
             #ifdef _CHCORE_
-            case 'm':
-                memory_malloc_type = atoi(optarg);
+            case 'i':
+                strcpy(thread_bind_cpu_filename, optarg);
                 break;
             #endif
             case '?':
@@ -130,6 +131,18 @@ void parse_args(int argc, char **argv)
         exit(1);
     }
     close(fd);
+    #ifdef _CHCORE_
+    if (strlen(thread_bind_cpu_filename) == 0) {
+        fprintf(stderr, "Thread bind cpu filename is not set default to string_match_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "string_match_bind_cpu.txt");
+    }
+    fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
+    if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
+        fprintf(stderr, "Failed to parse cpu bind file\n");
+    } else {
+        thread_bind_cpu_set = true;
+    }
+    #endif
 }
 /** getnextline()
  *  Function to get the next word

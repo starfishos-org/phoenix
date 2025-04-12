@@ -41,6 +41,7 @@
 #include "map_reduce.h"
 #include "stddefines.h"
 #include "sort.h"
+#include "processor.h"
 
 #define DEFAULT_DISP_NUM 10
 
@@ -55,7 +56,7 @@ void parse_args(int argc, char *argv[]) {
 
     thread_num = 1;
     disp_num = DEFAULT_DISP_NUM;
-    while ((c = getopt(argc, argv, "f:t:n:")) != EOF) {
+    while ((c = getopt(argc, argv, "f:t:n:i:")) != EOF) {
         switch (c) {
             case 'f':
                 fname = malloc(strlen(optarg) + 1);
@@ -67,8 +68,13 @@ void parse_args(int argc, char *argv[]) {
             case 'n':
                 disp_num = atoi(optarg);
                 break;
+            #ifdef _CHCORE_
+            case 'i':
+                strcpy(thread_bind_cpu_filename, optarg);
+                break;
+            #endif
             case '?':
-                printf("Usage: %s -f <filename> -t <thread_num> -n <disp_num>\n", argv[0]);
+                printf("Usage: %s -f <filename> -t <thread_num> -n <disp_num> -i <thread bind cpu filename>\n", argv[0]);
                 exit(1);
         }
     }
@@ -90,6 +96,18 @@ void parse_args(int argc, char *argv[]) {
         exit(1);
     }
     close(fd);
+    #ifdef _CHCORE_
+    if (strlen(thread_bind_cpu_filename) == 0) {
+        fprintf(stderr, "Thread bind cpu filename is not set default to pca_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "pca_bind_cpu.txt");
+    }
+    fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
+    if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
+        fprintf(stderr, "Failed to parse cpu bind file\n");
+    } else {
+        thread_bind_cpu_set = true;
+    }
+    #endif
 }
 
 #pragma GCC diagnostic push

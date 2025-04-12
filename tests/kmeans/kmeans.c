@@ -35,6 +35,7 @@
 #include <math.h>
 #include "stddefines.h"
 #include "map_reduce.h"
+#include "processor.h"
 
 #define DEF_NUM_POINTS 100000
 #define DEF_NUM_MEANS 100
@@ -117,7 +118,7 @@ void parse_args(int argc, char **argv)
     dim = DEF_DIM;
     grid_size = DEF_GRID_SIZE;
     thread_num = 1;
-    while ((c = getopt(argc, argv, "d:c:p:s:m:t:")) != EOF) 
+    while ((c = getopt(argc, argv, "d:c:p:s:t:i:")) != EOF) 
     {
         switch (c) {
             case 'd':
@@ -132,14 +133,14 @@ void parse_args(int argc, char **argv)
             case 's':
                 grid_size = atoi(optarg);
                 break;
-            #ifdef _CHCORE_
-            case 'm':
-                memory_malloc_type = atoi(optarg);
-                break;
-            #endif
             case 't':   
                 thread_num = atoi(optarg);
                 break;
+            #ifdef _CHCORE_
+            case 'i':
+                strcpy(thread_bind_cpu_filename, optarg);
+                break;
+            #endif
             case '?':
                 printf("Usage: %s -d <vector dimension> -c <num clusters> -p <num points> -s <max value> -m <0: default, 1: private, 2: shared> -t <thread_num>\n", argv[0]);
                 exit(1);
@@ -156,6 +157,18 @@ void parse_args(int argc, char **argv)
     printf("Number of points = %d\n", num_points);
     printf("Size of each dimension = %d\n", grid_size);    
     printf("Thread number = %d\n", thread_num);
+    #ifdef _CHCORE_
+    if (strlen(thread_bind_cpu_filename) == 0) {
+        fprintf(stderr, "Thread bind cpu filename is not set default to kmeans_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "kmeans_bind_cpu.txt");
+    }
+    fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
+    if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
+        fprintf(stderr, "Failed to parse cpu bind file\n");
+    } else {
+        thread_bind_cpu_set = true;
+    }
+    #endif
 }
 
 /** generate_points()

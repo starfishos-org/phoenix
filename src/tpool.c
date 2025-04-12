@@ -94,8 +94,11 @@ tpool_t* tpool_create (int num_threads)
     CHECK_ERROR (pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM));
     CHECK_ERROR (pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED));
 
-    proc_bind_thread(0);
-
+    if (thread_bind_cpu_set) {
+        proc_bind_thread(thread_bind_cpu_list[0]);
+    } else {
+        proc_bind_thread(0);
+    }
     tpool->die = 0;
     for (i = 0; i < num_threads; ++i) {
         /* Initialize thread argument. */

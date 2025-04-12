@@ -42,6 +42,7 @@
 #include "map_reduce.h"
 #include "stddefines.h"
 #include "processor.h"
+
 typedef struct {
     int row_num;
     int *matrix_A;
@@ -78,9 +79,6 @@ int matrix_len = 0;
 int row_block_len = 0;
 int file_size = 0;
 extern int thread_num;
-int memory_malloc_type;
-extern char thread_bind_cpu_filename[1024];
-extern bool thread_bind_cpu_set;
 
 void parse_args(int argc, char **argv) 
 {
@@ -92,7 +90,7 @@ void parse_args(int argc, char **argv)
     fname_A = "matrix_file_A.txt";
     fname_B = "matrix_file_B.txt";
 
-    while ((c = getopt(argc, argv, "l:r:t:m:c:i:")) != EOF) 
+    while ((c = getopt(argc, argv, "l:r:t:c:i:")) != EOF) 
     {
         switch (c) {
             case 'l':
@@ -104,19 +102,16 @@ void parse_args(int argc, char **argv)
             case 't':
                 thread_num = atoi(optarg);   
                 break;
-            #ifdef _CHCORE_
-            case 'm':
-                memory_malloc_type = atoi(optarg);
-                break;
-            #endif
             case 'c':
                 create_files = atoi(optarg);
                 break;
+            #ifdef _CHCORE_
             case 'i':
                 strcpy(thread_bind_cpu_filename, optarg);
                 break;
+            #endif
             case '?':
-                fprintf(stderr, "Usage: %s -l <side of matrix> -r <size of Row block> -t <thread_num> -i <thread bind cpu filename> -m <0: default, 1: private, 2: shared> -c <create files>\n", argv[0]);
+                fprintf(stderr, "Usage: %s -l <side of matrix> -r <size of Row block> -t <thread_num> -i <thread bind cpu filename> -c <create files>\n", argv[0]);
                 exit(1);
         }
     }
@@ -131,10 +126,8 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "***** file size is %d\n", file_size);
     fprintf(stderr, "MatrixMult: Side of the matrix is %d\n", matrix_len);
     fprintf(stderr, "MatrixMult: Row Block Len is %d\n", row_block_len);
-    #ifdef _CHCORE_
-    fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type);
-    #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);
+    #ifdef _CHCORE_
     if (strlen(thread_bind_cpu_filename) == 0) {
         fprintf(stderr, "Thread bind cpu filename is not set default to matrix_multiply_bind_cpu.txt\n");
         strcpy(thread_bind_cpu_filename, "matrix_multiply_bind_cpu.txt");
@@ -145,6 +138,7 @@ void parse_args(int argc, char **argv)
     } else {
         thread_bind_cpu_set = true;
     }
+    #endif
 }
 
 /** myintcmp()
