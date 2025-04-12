@@ -43,11 +43,16 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <stdio.h>
+#include <stdatomic.h>
+#include <ctype.h>
 
 #include "processor.h"
 #include "memory.h"
 
 int thread_num = 0;
+bool thread_bind_cpu_set = false;
+int thread_bind_cpu_list[1024];
+char thread_bind_cpu_filename[1024];
 
 #define info_once(fmt, ...) do {  \
 	static int __warned = 0;  \
@@ -55,6 +60,76 @@ int thread_num = 0;
 	__warned = 1;             \
 	printf(fmt, ##__VA_ARGS__);    \
 } while (0)
+
+int parse_cpu_bind_file(char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "Failed to open CPU bind file: %s\n", filename);
+        return -1;
+    }
+    
+    char buffer[1024];
+    int index = 0;
+    if (fgets(buffer, sizeof(buffer), file)) {
+        char *p = buffer;
+        char *end;
+        
+        while (*p) {
+            // 跳过空白字符
+            while (*p && isspace(*p)) p++;
+            if (!*p) break;
+            
+            // 读取第一个数字
+            long start = strtol(p, &end, 10);
+            if (end == p) {
+                fprintf(stderr, "invalid number: %s\n", p);
+                break;
+            }
+            p = end;
+            
+            // 检查是否有范围符号 '-'
+            if (*p == '-') {
+                p++;
+                // 读取第二个数字
+                long end_num = strtol(p, &end, 10);
+                if (end == p) {
+                    fprintf(stderr, "invalid range end: %s\n", p);
+                    break;
+                }
+                p = end;
+                
+                // 处理范围
+                for (long i = start; i <= end_num; i++) {
+                    thread_bind_cpu_list[index++] = i;
+                }
+            } else {
+                // 单个数字
+                thread_bind_cpu_list[index++] = start;
+            }
+            
+            // 跳过逗号或空格
+            while (*p && (*p == ',' || isspace(*p))) p++;
+        }
+    }
+
+    if (index == 0) {
+        fprintf(stderr, "No CPU bind file found\n");
+        return -1;
+    }
+    if (index < thread_num) {
+        fprintf(stderr, "CPU bind file size is less than thread number\n");
+        return -1;
+    }
+
+    fprintf(stderr, "bind %d cpu: ", index);
+    for (int i = 0; i < index; i++) {
+        fprintf(stderr, "%d ", thread_bind_cpu_list[i]);
+    }
+    fprintf(stderr, "\n");
+    
+    fclose(file);
+    return 0;
+}
 
 /* Query the number of CPUs online. */
 inline int proc_get_num_cpus (void)

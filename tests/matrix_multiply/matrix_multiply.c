@@ -41,7 +41,7 @@
 
 #include "map_reduce.h"
 #include "stddefines.h"
-
+#include "processor.h"
 typedef struct {
     int row_num;
     int *matrix_A;
@@ -79,6 +79,8 @@ int row_block_len = 0;
 int file_size = 0;
 extern int thread_num;
 int memory_malloc_type;
+extern char thread_bind_cpu_filename[1024];
+extern bool thread_bind_cpu_set;
 
 void parse_args(int argc, char **argv) 
 {
@@ -90,7 +92,7 @@ void parse_args(int argc, char **argv)
     fname_A = "matrix_file_A.txt";
     fname_B = "matrix_file_B.txt";
 
-    while ((c = getopt(argc, argv, "l:r:t:m:c:")) != EOF) 
+    while ((c = getopt(argc, argv, "l:r:t:m:c:i:")) != EOF) 
     {
         switch (c) {
             case 'l':
@@ -110,8 +112,11 @@ void parse_args(int argc, char **argv)
             case 'c':
                 create_files = atoi(optarg);
                 break;
+            case 'i':
+                strcpy(thread_bind_cpu_filename, optarg);
+                break;
             case '?':
-                fprintf(stderr, "Usage: %s -l <side of matrix> -r <size of Row block> -t <thread_num> -m <0: default, 1: private, 2: shared> -c <create files>\n", argv[0]);
+                fprintf(stderr, "Usage: %s -l <side of matrix> -r <size of Row block> -t <thread_num> -i <thread bind cpu filename> -m <0: default, 1: private, 2: shared> -c <create files>\n", argv[0]);
                 exit(1);
         }
     }
@@ -130,6 +135,16 @@ void parse_args(int argc, char **argv)
     fprintf(stderr, "Memory malloc type=%d\n", memory_malloc_type);
     #endif
     fprintf(stderr, "Number of threads=%d\n", thread_num);
+    if (strlen(thread_bind_cpu_filename) == 0) {
+        fprintf(stderr, "Thread bind cpu filename is not set default to matrix_multiply_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "matrix_multiply_bind_cpu.txt");
+    }
+    fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
+    if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
+        fprintf(stderr, "Failed to parse cpu bind file\n");
+    } else {
+        thread_bind_cpu_set = true;
+    }
 }
 
 /** myintcmp()

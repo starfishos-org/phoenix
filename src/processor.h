@@ -29,6 +29,10 @@
 
 #include <stdbool.h>
 
+extern bool thread_bind_cpu_set;
+extern int thread_bind_cpu_list[1024];
+
+extern int parse_cpu_bind_file(char *filename);
 extern int proc_get_num_cpus (void);
 extern int proc_bind_thread (int cpu_id);
 extern int proc_unbind_thread ();

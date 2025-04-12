@@ -32,6 +32,7 @@
 #include "memory.h"
 #include "tpool.h"
 #include "stddefines.h"
+#include "processor.h"
 
 typedef struct {
     sem_t           sem_run;
@@ -93,7 +94,6 @@ tpool_t* tpool_create (int num_threads)
     CHECK_ERROR (pthread_attr_setscope (&attr, PTHREAD_SCOPE_SYSTEM));
     CHECK_ERROR (pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED));
 
-    extern int proc_bind_thread(int cpu_id);
     proc_bind_thread(0);
 
     tpool->die = 0;
@@ -252,9 +252,11 @@ static void* thread_loop (void *arg)
     int             num_workers_done;
 
     assert (thread_arg);
-
-    extern int proc_bind_thread(int cpu_id);
-    proc_bind_thread(thread_arg->cpu_id);
+    if (thread_bind_cpu_set) {
+        proc_bind_thread(thread_bind_cpu_list[thread_arg->cpu_id]);
+    } else {
+        proc_bind_thread(thread_arg->cpu_id);
+    }
 
     while (1)
     {
