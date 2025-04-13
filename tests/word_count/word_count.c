@@ -98,8 +98,8 @@ void parse_args(int argc, char *argv[]) {
     close(fd);
     #ifdef _CHCORE_
     if (strlen(thread_bind_cpu_filename) == 0) {
-        fprintf(stderr, "Thread bind cpu filename is not set default to pca_bind_cpu.txt\n");
-        strcpy(thread_bind_cpu_filename, "pca_bind_cpu.txt");
+        fprintf(stderr, "Thread bind cpu filename is not set default to word_count_bind_cpu.txt\n");
+        strcpy(thread_bind_cpu_filename, "word_count_bind_cpu.txt");
     }
     fprintf(stderr, "Thread bind cpu filename=%s\n", thread_bind_cpu_filename);
     if (parse_cpu_bind_file(thread_bind_cpu_filename) < 0) {
