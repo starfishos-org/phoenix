@@ -38,7 +38,6 @@ if(${OS} STREQUAL "CHCORE")
         COMMAND rsync -a ${DATA_DIR}/matrix_datafiles/*.txt ${build_ramdisk_dir}/
         COMMAND rsync -a ${DATA_DIR}/linear_regression_datafiles/key_file_100MB.txt ${build_ramdisk_dir}/
         COMMAND rsync -a ${DATA_DIR}/word_count_datafiles/word_100MB.txt ${build_ramdisk_dir}/
-        COMMAND rsync -a ${CMAKE_CURRENT_SOURCE_DIR}/config/*.txt ${build_ramdisk_dir}/
     )
     add_dependencies(ramdisk phoenix-copy-data)
 endif()
