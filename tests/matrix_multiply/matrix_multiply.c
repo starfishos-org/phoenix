@@ -38,6 +38,12 @@
 #include <time.h>
 #include <inttypes.h>
 #include <sys/time.h>
+#include <pthread.h>
+#include <sched.h>
+
+#ifdef _CHCORE_
+#include <chcore/syscall.h>
+#endif
 
 #include "map_reduce.h"
 #include "stddefines.h"
@@ -72,13 +78,108 @@ static void access_pages(char *fdata, int size) {
 }
 #pragma GCC diagnostic pop
 
+extern int thread_num;
+
+#ifdef _CHCORE_
+/* ---- Per-machine first-touch (like GeminiGraph's run_on_loader_threads) ---- */
+
+/* Detect machine boundaries from thread_bind_cpu_list: a gap in consecutive
+ * CPU IDs marks a new machine.  Returns number of machines found; fills
+ * machine_first_cpu[] with the first CPU of each machine. */
+static int  num_machines = 0;
+static int  machine_first_cpu[64];
+
+/* Per-machine input buffers, populated by per_machine_load() */
+static int *g_machine_matrix_A[64];
+static int *g_machine_matrix_B[64];
+
+/* Return which machine index the calling thread is on */
+static int get_current_machine(void) {
+    int cpu = proc_get_cpuid();
+    for (int m = num_machines - 1; m >= 0; m--) {
+        if (cpu >= machine_first_cpu[m])
+            return m;
+    }
+    return 0;
+}
+
+static void detect_machines(void) {
+    if (!thread_bind_cpu_set || thread_num <= 0) {
+        num_machines = 1;
+        machine_first_cpu[0] = 0;
+        return;
+    }
+    num_machines = 1;
+    machine_first_cpu[0] = thread_bind_cpu_list[0];
+    for (int i = 1; i < thread_num; i++) {
+        if (thread_bind_cpu_list[i] != thread_bind_cpu_list[i-1] + 1) {
+            machine_first_cpu[num_machines++] = thread_bind_cpu_list[i];
+        }
+    }
+}
+
+typedef struct {
+    int   machine_id;
+    char *buf_A;
+    char *buf_B;
+    int   mlen;        /* matrix side length */
+    int   file_size;
+} loader_arg_t;
+
+/* Each machine's thread: bind to local CPU, malloc + fill matrix data.
+ * Page faults on local CPU → physical pages land in local DRAM. */
+static void *loader_thread_func(void *arg) {
+    loader_arg_t *la = (loader_arg_t *)arg;
+    proc_bind_thread(machine_first_cpu[la->machine_id]);
+
+    la->buf_A = (char *)malloc(la->file_size);
+    la->buf_B = (char *)malloc(la->file_size);
+    assert(la->buf_A && la->buf_B);
+
+    int *a = (int *)la->buf_A;
+    int *b = (int *)la->buf_B;
+    int n = la->mlen * la->mlen;
+    srand(0);
+    for (int i = 0; i < n; i++) a[i] = rand() % 11;
+    srand(0);
+    for (int i = 0; i < n; i++) b[i] = rand() % 11;
+    return NULL;
+}
+
+/* Each machine launches one loader thread bound to its local CPU. */
+static void per_machine_load(int mlen, int fsize,
+                             char **out_A, char **out_B) {
+    detect_machines();
+    pthread_t tids[64];
+    loader_arg_t args[64];
+    for (int m = 0; m < num_machines; m++) {
+        args[m].machine_id = m;
+        args[m].buf_A = NULL;
+        args[m].buf_B = NULL;
+        args[m].mlen = mlen;
+        args[m].file_size = fsize;
+        pthread_create(&tids[m], NULL, loader_thread_func, &args[m]);
+    }
+    for (int m = 0; m < num_machines; m++) {
+        pthread_join(tids[m], NULL);
+        out_A[m] = args[m].buf_A;
+        out_B[m] = args[m].buf_B;
+    }
+}
+#endif /* _CHCORE_ */
+
 int count = 0;
 char * fname_A, *fname_B;
 int create_files = 0;
 int matrix_len = 0;
 int row_block_len = 0;
 int file_size = 0;
+size_t output_size = 0;
 extern int thread_num;
+extern int thread_bind_cpu_list[1024];
+#ifdef _CHCORE_
+int memory_malloc_type = MALLOC_TYPE_PRIVATE;
+#endif
 
 void parse_args(int argc, char **argv) 
 {
@@ -90,7 +191,7 @@ void parse_args(int argc, char **argv)
     fname_A = "matrix_file_A.txt";
     fname_B = "matrix_file_B.txt";
 
-    while ((c = getopt(argc, argv, "l:r:t:c:i:")) != EOF) 
+    while ((c = getopt(argc, argv, "l:r:t:c:i:")) != EOF)
     {
         switch (c) {
             case 'l':
@@ -100,7 +201,7 @@ void parse_args(int argc, char **argv)
                 row_block_len = atoi(optarg);
                 break;
             case 't':
-                thread_num = atoi(optarg);   
+                thread_num = atoi(optarg);
                 break;
             case 'c':
                 create_files = atoi(optarg);
@@ -111,7 +212,7 @@ void parse_args(int argc, char **argv)
                 break;
             #endif
             case '?':
-                fprintf(stderr, "Usage: %s -l <side of matrix> -r <size of Row block> -t <thread_num> -i <thread bind cpu filename> -c <create files>\n", argv[0]);
+                fprintf(stderr, "Usage: %s -l <matrix side> -r <row block> -t <threads> -c <create> -i <cpu file>\n", argv[0]);
                 exit(1);
         }
     }
@@ -224,24 +325,30 @@ void matrixmult_map(map_args_t *args)
     int row_count = 0;
     int i,j, x_loc, value;
     // int y_loc;
-    int * a_ptr,* b_ptr;    
+    int * a_ptr,* b_ptr;
 
     assert(args);
-    
+
     mm_data_t* data = (mm_data_t*)(args->data);
     assert(data);
 
-    /* dprintf("In Map task %d %d\n",data->row_num, args->length); */
-
-    /* dprintf("%d Start Loop \n",data->row_num); */
+#ifdef _CHCORE_
+    /* Use this machine's local DRAM buffer instead of machine 0's */
+    int cur_m = get_current_machine();
+    int *local_matrix_A = g_machine_matrix_A[cur_m] ? g_machine_matrix_A[cur_m] : data->matrix_A;
+    int *local_matrix_B = g_machine_matrix_B[cur_m] ? g_machine_matrix_B[cur_m] : data->matrix_B;
+#else
+    int *local_matrix_A = data->matrix_A;
+    int *local_matrix_B = data->matrix_B;
+#endif
 
     while(row_count < args->length)
     {
-        a_ptr = data->matrix_A + (data->row_num + row_count)*data->matrix_len;
+        a_ptr = local_matrix_A + (data->row_num + row_count)*data->matrix_len;
 
         for(i=0; i < data->matrix_len ; i++)
         {
-            b_ptr = data->matrix_B + i;
+            b_ptr = local_matrix_B + i;
             value = 0;
 
             for(j=0;j<data->matrix_len ; j++)
@@ -316,70 +423,45 @@ int main(int argc, char *argv[]) {
         CHECK_ERROR(close(fd_B) < 0);
     }
 
+#ifdef _CHCORE_
+    {
+        char *per_machine_A[64], *per_machine_B[64];
+        per_machine_load(matrix_len, file_size, per_machine_A, per_machine_B);
+        for (int m = 0; m < num_machines; m++) {
+            g_machine_matrix_A[m] = (int *)per_machine_A[m];
+            g_machine_matrix_B[m] = (int *)per_machine_B[m];
+        }
+        fdata_A = per_machine_A[0];
+        fdata_B = per_machine_B[0];
+    }
+#else
     // Read in the file
     CHECK_ERROR((fd_A = open(fname_A,O_RDONLY)) < 0);
-    // Get the file info (for file length)
     CHECK_ERROR(fstat(fd_A, &finfo_A) < 0);
-#ifndef NO_MMAP
-    // Memory map the file
-    #ifdef _CHCORE_
-        if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
-            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_A, 0)) == NULL);
-        } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
-            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FLAG_SHARED, fd_A, 0)) == NULL);
-        } else {
-            CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-                PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
-        }
-    #else
-        CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
-            PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
-    #endif
-#else
+  #ifndef NO_MMAP
+    CHECK_ERROR((fdata_A= mmap(0, file_size + 1,
+        PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_A, 0)) == NULL);
+  #else
     int ret;
-
     fdata_A = (char *)mem_malloc(file_size);
     CHECK_ERROR (fdata_A == NULL);
-
     ret = read (fd_A, fdata_A, file_size);
     CHECK_ERROR (ret != file_size);
-#endif
+  #endif
 
     // Read in the file
     CHECK_ERROR((fd_B = open(fname_B,O_RDONLY)) < 0);
-    // Get the file info (for file length)
     CHECK_ERROR(fstat(fd_B, &finfo_B) < 0);
-#ifndef NO_MMAP
-    // Memory map the file
-    #ifdef _CHCORE_
-        if (memory_malloc_type == MALLOC_TYPE_PRIVATE) {
-            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ, MAP_PRIVATE | MAP_FLAG_PRIVATE, fd_B, 0)) == NULL);
-        } else if (memory_malloc_type == MALLOC_TYPE_SHARED) {
-            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ, MAP_PRIVATE | MAP_FLAG_SHARED, fd_B, 0)) == NULL);
-        } else {
-            CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-                PROT_READ, MAP_PRIVATE, fd_B, 0)) == NULL);
-        }
-    #else
-        CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
-            PROT_READ, MAP_PRIVATE, fd_B, 0)) == NULL);
-    #endif
-#else
+  #ifndef NO_MMAP
+    CHECK_ERROR((fdata_B= mmap(0, file_size + 1,
+        PROT_READ, MAP_PRIVATE, fd_B, 0)) == NULL);
+  #else
     fdata_B = (char *)mem_malloc(file_size);
     CHECK_ERROR (fdata_B == NULL);
-
     ret = read (fd_B, fdata_B, file_size);
     CHECK_ERROR (ret != file_size);
+  #endif
 #endif
-    // read every page of file
-    #ifdef _CHCORE_
-        access_pages(fdata_A, file_size);
-        access_pages(fdata_B, file_size);
-    #endif
 
     // Setup splitter args
     mm_data_t mm_data;
@@ -390,7 +472,17 @@ int main(int argc, char *argv[]) {
     mm_data.matrix_B = NULL;
     mm_data.row_num = 0;
 
-    mm_data.output = (int*)mem_malloc(matrix_len*matrix_len*sizeof(int));
+    output_size = (size_t)matrix_len * matrix_len * sizeof(int);
+#ifdef _CHCORE_
+    // Allocate output in CXL (shared) memory, like GeminiGraph's alloc_vertex_array_cxl
+    mm_data.output = (int*)mmap(NULL, output_size,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_FLAG_SHARED,
+        -1, 0);
+    assert(mm_data.output != MAP_FAILED);
+#else
+    mm_data.output = (int*)mem_malloc(output_size);
+#endif
     
     mm_data.matrix_A = matrix_A_ptr = ((int *)fdata_A);
     mm_data.matrix_B = matrix_B_ptr = ((int *)fdata_B);
@@ -417,9 +509,6 @@ int main(int argc, char *argv[]) {
     map_reduce_args.num_merge_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
-
-    fprintf(stderr, "***** data size is %" PRIdPTR "\n", (intptr_t)map_reduce_args.data_size);
-    fprintf(stderr, "MatrixMult: Calling MapReduce Scheduler Matrix Multiplication\n");
 
     get_time (&end);
 
@@ -452,22 +541,27 @@ int main(int argc, char *argv[]) {
     dprintf("MatrixMult: MapReduce Completed\n");
 
     mem_free(mm_vals.data);
+#ifdef _CHCORE_
+    munmap(mm_data.output, output_size);
+    for (int m = 0; m < num_machines; m++) {
+        free((void *)g_machine_matrix_A[m]);
+        free((void *)g_machine_matrix_B[m]);
+    }
+#else
     mem_free(mm_data.output);
-
-
-#ifndef NO_MMAP
+  #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata_A, file_size + 1) < 0);
-#else
+  #else
     mem_free(fdata_A);
-#endif
+  #endif
     CHECK_ERROR(close(fd_A) < 0);
-
-#ifndef NO_MMAP
+  #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata_B, file_size + 1) < 0);
-#else
+  #else
     mem_free(fdata_B);
-#endif
+  #endif
     CHECK_ERROR(close(fd_B) < 0);
+#endif
 
     get_time (&end);
 
