@@ -425,6 +425,8 @@ int main(int argc, char *argv[]) {
 
 #ifdef _CHCORE_
     {
+        detect_machines();
+        proc_bind_thread(machine_first_cpu[0]);
         char *per_machine_A[64], *per_machine_B[64];
         per_machine_load(matrix_len, file_size, per_machine_A, per_machine_B);
         for (int m = 0; m < num_machines; m++) {
