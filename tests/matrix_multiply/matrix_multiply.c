@@ -485,9 +485,11 @@ int main(int argc, char *argv[]) {
 #else
     mm_data.output = (int*)mem_malloc(output_size);
 #endif
-    
+
     mm_data.matrix_A = matrix_A_ptr = ((int *)fdata_A);
     mm_data.matrix_B = matrix_B_ptr = ((int *)fdata_B);
+
+/* Debug VA / vmspace prints disabled. */
 
     CHECK_ERROR (map_reduce_init ());
 
@@ -499,7 +501,11 @@ int main(int argc, char *argv[]) {
     map_reduce_args.map = matrixmult_map;
     map_reduce_args.reduce = NULL;
     map_reduce_args.splitter = matrixmult_splitter;
+#ifdef _CHCORE_
+    map_reduce_args.locator = NULL;
+#else
     map_reduce_args.locator = matrixmult_locator;
+#endif
     map_reduce_args.key_cmp = myintcmp;
     map_reduce_args.unit_size = mm_data.unit_size;
     map_reduce_args.partition = NULL; // use default
@@ -541,6 +547,8 @@ int main(int argc, char *argv[]) {
     //dprintf("\n");
 
     dprintf("MatrixMult: MapReduce Completed\n");
+
+/* Debug vmspace print disabled before cleanup. */
 
     mem_free(mm_vals.data);
 #ifdef _CHCORE_

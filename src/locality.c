@@ -33,6 +33,41 @@
 
 #if defined _LINUX_ || defined _CHCORE_
 
+static int lgrp_inited = 0;
+static int lgrp_num = 1;
+static int lgrp_first_cpu[64];
+static int lgrp_size[64];
+
+static void init_lgrps(void)
+{
+    if (lgrp_inited)
+        return;
+
+    if (!thread_bind_cpu_set || thread_num <= 0) {
+        lgrp_num = 1;
+        lgrp_first_cpu[0] = 0;
+        lgrp_size[0] = proc_get_num_cpus();
+        lgrp_inited = 1;
+        return;
+    }
+
+    lgrp_num = 1;
+    lgrp_first_cpu[0] = thread_bind_cpu_list[0];
+    lgrp_size[0] = 1;
+
+    for (int i = 1; i < thread_num; i++) {
+        if (thread_bind_cpu_list[i] != thread_bind_cpu_list[i - 1] + 1) {
+            lgrp_first_cpu[lgrp_num] = thread_bind_cpu_list[i];
+            lgrp_size[lgrp_num] = 1;
+            lgrp_num++;
+        } else {
+            lgrp_size[lgrp_num - 1]++;
+        }
+    }
+
+    lgrp_inited = 1;
+}
+
 #elif defined (_SOLARIS_)
 #include <sys/lgrp_user.h>
 #include <sys/mman.h>
@@ -46,8 +81,8 @@
 inline int loc_get_lgrp_size ()
 {
 #if defined _LINUX_ || defined _CHCORE_
-    /* XXX smarter implementation? have all cpus local to this thread */
-    return proc_get_num_cpus ();
+    init_lgrps();
+    return lgrp_size[loc_get_lgrp()];
 #elif defined (_SOLARIS_)
     int ret, num_cpus;
     lgrp_id_t lgrp;
@@ -70,8 +105,8 @@ inline int loc_get_lgrp_size ()
 inline int loc_get_num_lgrps ()
 {
 #if defined _LINUX_ || defined _CHCORE_
-    /* XXX only one locality group, all processors */
-    return 1;
+    init_lgrps();
+    return lgrp_num;
 #elif defined (_SOLARIS_)
     int ret;
     lgrp_cookie_t cookie;
@@ -97,6 +132,15 @@ inline int loc_get_num_lgrps ()
 inline int loc_get_lgrp ()
 {
 #if defined _LINUX_ || defined _CHCORE_
+    int cpu;
+
+    init_lgrps();
+    cpu = proc_get_cpuid();
+    for (int i = lgrp_num - 1; i >= 0; i--) {
+        if (cpu >= lgrp_first_cpu[i]) {
+            return i;
+        }
+    }
     return 0;
 #elif defined (_SOLARIS_)
     int lgrp = lgrp_home (P_LWPID, P_MYID);

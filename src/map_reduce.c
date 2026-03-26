@@ -695,8 +695,9 @@ static bool map_worker_do_next_task (
     (void)oneOutputQueuePerMapTask;
     (void)alloc_len;
 
-    /* Get new map task. */
-    if (tq_dequeue (env->taskQueue, &map_task, lgrp, thread_index) == 0) {
+    /* Get new map task from the local queue only. Avoid cross-machine task stealing
+       on ChCore so each machine primarily accesses its own local DRAM input pages. */
+    if (tq_dequeue_local (env->taskQueue, &map_task, lgrp, thread_index) == 0) {
         /* no more map tasks */
         return false;
     }

@@ -67,10 +67,13 @@ static inline taskQ_t* tq_init_normal(int numThreads);
 static inline void tq_finalize_normal(taskQ_t* tq);
 static inline int tq_dequeue_normal(
     taskQ_t* tq, task_t* task, int lgrp, int tid);
+static inline int tq_dequeue_local_only(
+    taskQ_t* tq, task_t* task, int lgrp, int tid);
 static inline int tq_dequeue_normal_seq (
     taskQ_t* tq, task_t* task, int lgrp, int tid);
 static inline int tq_dequeue_normal_internal (
-    taskQ_t* tq, task_t* task, int lgrp, int tid, dequeue_fn dequeue_fn);
+    taskQ_t* tq, task_t* task, int lgrp, int tid, dequeue_fn dequeue_fn,
+    int allow_steal);
 
 static queue_t* tq_alloc_queue(void);
 static void tq_free_queue(queue_t* q);
@@ -395,18 +398,26 @@ static inline int tq_dequeue_normal_seq (
     taskQ_t* tq, task_t* task, int lgrp, int tid)
 {
     return tq_dequeue_normal_internal (
-        tq, task, lgrp, tid, tq_elem_into_free_seq);
+        tq, task, lgrp, tid, tq_elem_into_free_seq, 1);
 }
 
 static inline int tq_dequeue_normal(
     taskQ_t* tq, task_t* task, int lgrp, int tid)
 {
     return tq_dequeue_normal_internal (
-        tq, task, lgrp, tid, tq_elem_into_free);
+        tq, task, lgrp, tid, tq_elem_into_free, 1);
+}
+
+static inline int tq_dequeue_local_only(
+    taskQ_t* tq, task_t* task, int lgrp, int tid)
+{
+    return tq_dequeue_normal_internal (
+        tq, task, lgrp, tid, tq_elem_into_free, 0);
 }
 
 static inline int tq_dequeue_normal_internal (
-    taskQ_t* tq, task_t* task, int lgrp, int tid, dequeue_fn dequeue_fn)
+    taskQ_t* tq, task_t* task, int lgrp, int tid, dequeue_fn dequeue_fn,
+    int allow_steal)
 {
     int             i, ret, index;
     queue_elem_t    *queue_elem;
@@ -422,11 +433,13 @@ static inline int tq_dequeue_normal_internal (
 
    /* Do task stealing if nothing on our queue.
       Cycle through all indexes until success or exhaustion */
-    for (i = (index + 1) % tq->num_queues;
-        (ret == 0) && (i != index);
-        i = (i + 1) % tq->num_queues)
-    {
-        ret = (*dequeue_fn)(tq, i, tid, &queue_elem);
+    if (allow_steal) {
+        for (i = (index + 1) % tq->num_queues;
+            (ret == 0) && (i != index);
+            i = (i + 1) % tq->num_queues)
+        {
+            ret = (*dequeue_fn)(tq, i, tid, &queue_elem);
+        }
     }
 
     if (ret == 0) {
@@ -445,4 +458,9 @@ static inline int tq_dequeue_normal_internal (
 int tq_dequeue (taskQ_t* tq, task_t *task, int lgrp, int tid)
 {
     return tq_dequeue_normal(tq, task, lgrp, tid);
+}
+
+int tq_dequeue_local (taskQ_t* tq, task_t *task, int lgrp, int tid)
+{
+    return tq_dequeue_local_only(tq, task, lgrp, tid);
 }

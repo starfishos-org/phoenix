@@ -47,6 +47,7 @@ typedef struct taskQ_t taskQ_t;
 int tq_enqueue (taskQ_t* tq, task_t *task, int lgrp, int tid);
 int tq_enqueue_seq (taskQ_t* tq, task_t *task, int lgrp);
 int tq_dequeue (taskQ_t* tq, task_t *task, int lgrp, int tid);
+int tq_dequeue_local (taskQ_t* tq, task_t *task, int lgrp, int tid);
 taskQ_t* tq_init (int num_threads);
 void tq_reset (taskQ_t* tq, int num_threads);
 void tq_finalize (taskQ_t* tq);
