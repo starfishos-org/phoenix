@@ -548,8 +548,6 @@ int main(int argc, char *argv[]) {
 
     dprintf("MatrixMult: MapReduce Completed\n");
 
-/* Debug vmspace print disabled before cleanup. */
-
     mem_free(mm_vals.data);
 #ifdef _CHCORE_
     munmap(mm_data.output, output_size);
