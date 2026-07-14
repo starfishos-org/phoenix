@@ -14,3 +14,11 @@ build
 
 matrix_file_A.txt
 matrix_file_B.txt
+
+# Large benchmark inputs live in the StarfishOS repo-root datasets/ directory
+# (gitignored there) and are hardlinked/copied here by
+# scripts/download_datasets.sh. Keep word_10MB.txt tracked (small fixture).
+data/matrix_datafiles/matrix_file_*.txt
+data/linear_regression_datafiles/key_file_*.txt
+data/word_count_datafiles/word_50MB.txt
+data/word_count_datafiles/word_100MB.txt
