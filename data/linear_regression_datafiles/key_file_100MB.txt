@@ -1,1 +1,1 @@
-/mnt/disk1/yjs/starfishos-large-data/key_file_100MB.txt
+../../../../../datasets/key_file_100MB.txt

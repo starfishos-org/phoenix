@@ -1,1 +1,1 @@
-/mnt/disk1/yjs/starfishos-large-data/word_100MB.txt
+../../../../../datasets/word_100MB.txt

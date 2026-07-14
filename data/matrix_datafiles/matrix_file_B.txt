@@ -1,1 +1,1 @@
-/mnt/disk1/yjs/starfishos-large-data/matrix_file_B.txt
+../../../../../datasets/matrix_file_B.txt
