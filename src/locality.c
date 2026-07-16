@@ -32,6 +32,9 @@
 #include "processor.h"
 
 #if defined _LINUX_ || defined _CHCORE_
+#ifdef _CHCORE_
+#include <chcore/syscall.h>
+#endif
 
 static int lgrp_inited = 0;
 static int lgrp_num = 1;
@@ -55,8 +58,23 @@ static void init_lgrps(void)
     lgrp_first_cpu[0] = thread_bind_cpu_list[0];
     lgrp_size[0] = 1;
 
+#ifdef _CHCORE_
+    int cpus_per_machine = (int)usys_get_machine_cpu_count();
+    assert(cpus_per_machine > 0);
+#endif
     for (int i = 1; i < thread_num; i++) {
-        if (thread_bind_cpu_list[i] != thread_bind_cpu_list[i - 1] + 1) {
+        int new_group;
+#ifdef _CHCORE_
+        /* Reserved service CPUs create holes inside a machine's bind list.
+         * They are not NUMA/locality boundaries. */
+        new_group = thread_bind_cpu_list[i] / cpus_per_machine !=
+                    thread_bind_cpu_list[i - 1] / cpus_per_machine;
+#else
+        new_group = thread_bind_cpu_list[i] != thread_bind_cpu_list[i - 1] + 1;
+#endif
+        if (new_group) {
+            assert(lgrp_num < (int)(sizeof(lgrp_first_cpu) /
+                                    sizeof(lgrp_first_cpu[0])));
             lgrp_first_cpu[lgrp_num] = thread_bind_cpu_list[i];
             lgrp_size[lgrp_num] = 1;
             lgrp_num++;

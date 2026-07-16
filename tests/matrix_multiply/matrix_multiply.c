@@ -83,9 +83,10 @@ extern int thread_num;
 #ifdef _CHCORE_
 /* ---- Per-machine first-touch (like GeminiGraph's run_on_loader_threads) ---- */
 
-/* Detect machine boundaries from thread_bind_cpu_list: a gap in consecutive
- * CPU IDs marks a new machine.  Returns number of machines found; fills
- * machine_first_cpu[] with the first CPU of each machine. */
+/* Detect machine boundaries from thread_bind_cpu_list.  CPU lists may have
+ * holes to avoid reserved polling cores, so a mere gap is not a machine
+ * boundary; compare CPU-number groups using the platform's CPUs-per-machine
+ * value instead. */
 static int  num_machines = 0;
 static int  machine_first_cpu[64];
 
@@ -109,10 +110,21 @@ static void detect_machines(void) {
         machine_first_cpu[0] = 0;
         return;
     }
+    int cpus_per_machine = (int)usys_get_machine_cpu_count();
+    if (cpus_per_machine <= 0) {
+        fprintf(stderr, "Matrix loader: cannot determine CPUs per machine\n");
+        abort();
+    }
     num_machines = 1;
     machine_first_cpu[0] = thread_bind_cpu_list[0];
     for (int i = 1; i < thread_num; i++) {
-        if (thread_bind_cpu_list[i] != thread_bind_cpu_list[i-1] + 1) {
+        if (thread_bind_cpu_list[i] / cpus_per_machine !=
+            thread_bind_cpu_list[i - 1] / cpus_per_machine) {
+            if (num_machines >= (int)(sizeof(machine_first_cpu) /
+                                       sizeof(machine_first_cpu[0]))) {
+                fprintf(stderr, "Matrix loader: too many machines\n");
+                abort();
+            }
             machine_first_cpu[num_machines++] = thread_bind_cpu_list[i];
         }
     }
@@ -126,23 +138,51 @@ typedef struct {
     int   file_size;
 } loader_arg_t;
 
-/* Each machine's thread: bind to local CPU, malloc + fill matrix data.
+static int loader_rand(uint64_t *state) {
+    *state = 6364136223846793005ULL * *state + 1;
+    return (int)(*state >> 33);
+}
+
+static void require_loader_success(int ret, const char *operation) {
+    if (ret != 0) {
+        fprintf(stderr, "Matrix loader: %s failed (ret=%d)\n", operation, ret);
+        abort();
+    }
+}
+
+/* Each machine's thread: bind to local CPU, map + fill matrix data.
  * Page faults on local CPU → physical pages land in local DRAM. */
 static void *loader_thread_func(void *arg) {
     loader_arg_t *la = (loader_arg_t *)arg;
-    proc_bind_thread(machine_first_cpu[la->machine_id]);
+    require_loader_success(
+        proc_bind_thread(machine_first_cpu[la->machine_id]),
+        "proc_bind_thread");
 
-    la->buf_A = (char *)malloc(la->file_size);
-    la->buf_B = (char *)malloc(la->file_size);
-    assert(la->buf_A && la->buf_B);
+    /* The copies are deliberately machine-private input replicas.  Ordinary
+     * malloc follows DSM_USER_MALLOC_MODE and can accidentally put them in
+     * CXL when this binary is run after another artifact suite. */
+    la->buf_A = (char *)mmap(NULL, la->file_size, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FLAG_PRIVATE,
+                            -1, 0);
+    la->buf_B = (char *)mmap(NULL, la->file_size, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FLAG_PRIVATE,
+                            -1, 0);
+    if (la->buf_A == MAP_FAILED || la->buf_B == MAP_FAILED) {
+        fprintf(stderr, "Matrix loader: private input mmap failed\n");
+        abort();
+    }
+    fprintf(stderr, "Matrix loader: machine %d private inputs mapped\n",
+            la->machine_id);
 
     int *a = (int *)la->buf_A;
     int *b = (int *)la->buf_B;
     int n = la->mlen * la->mlen;
-    srand(0);
-    for (int i = 0; i < n; i++) a[i] = rand() % 11;
-    srand(0);
-    for (int i = 0; i < n; i++) b[i] = rand() % 11;
+    uint64_t seed = UINT64_MAX;
+    for (int i = 0; i < n; i++) a[i] = loader_rand(&seed) % 11;
+    seed = UINT64_MAX;
+    for (int i = 0; i < n; i++) b[i] = loader_rand(&seed) % 11;
+    fprintf(stderr, "Matrix loader: machine %d inputs initialized\n",
+            la->machine_id);
     return NULL;
 }
 
@@ -158,12 +198,63 @@ static void per_machine_load(int mlen, int fsize,
         args[m].buf_B = NULL;
         args[m].mlen = mlen;
         args[m].file_size = fsize;
-        pthread_create(&tids[m], NULL, loader_thread_func, &args[m]);
+        require_loader_success(
+            pthread_create(&tids[m], NULL, loader_thread_func, &args[m]),
+            "pthread_create");
     }
     for (int m = 0; m < num_machines; m++) {
-        pthread_join(tids[m], NULL);
+        require_loader_success(pthread_join(tids[m], NULL), "pthread_join");
         out_A[m] = args[m].buf_A;
         out_B[m] = args[m].buf_B;
+    }
+}
+
+typedef struct {
+    int machine_id;
+    int file_size;
+} cleanup_arg_t;
+
+static void require_cleanup_success(int ret, int machine_id,
+                                    const char *operation) {
+    if (ret != 0) {
+        fprintf(stderr, "Matrix cleanup: machine %d %s failed (ret=%d)\n",
+                machine_id, operation, ret);
+        abort();
+    }
+}
+
+static void *cleanup_thread_func(void *arg) {
+    cleanup_arg_t *ca = (cleanup_arg_t *)arg;
+    int m = ca->machine_id;
+
+    require_cleanup_success(proc_bind_thread(machine_first_cpu[m]), m,
+                            "proc_bind_thread");
+    require_cleanup_success(
+        munmap((void *)g_machine_matrix_A[m], ca->file_size), m,
+        "input A munmap");
+    require_cleanup_success(
+        munmap((void *)g_machine_matrix_B[m], ca->file_size), m,
+        "input B munmap");
+    g_machine_matrix_A[m] = NULL;
+    g_machine_matrix_B[m] = NULL;
+    fprintf(stderr, "Matrix cleanup: machine %d private inputs unmapped\n", m);
+    return NULL;
+}
+
+static void per_machine_cleanup(int fsize) {
+    for (int m = 0; m < num_machines; m++) {
+        pthread_t tid;
+        cleanup_arg_t arg = {
+            .machine_id = m,
+            .file_size = fsize,
+        };
+
+        /* A private PMO must be revoked on its owning machine.  Keep cleanup
+         * threads serial so their musl thread-list exits cannot overlap. */
+        require_cleanup_success(
+            pthread_create(&tid, NULL, cleanup_thread_func, &arg), m,
+            "pthread_create");
+        require_cleanup_success(pthread_join(tid, NULL), m, "pthread_join");
     }
 }
 #endif /* _CHCORE_ */
@@ -426,9 +517,11 @@ int main(int argc, char *argv[]) {
 #ifdef _CHCORE_
     {
         detect_machines();
-        proc_bind_thread(machine_first_cpu[0]);
+        require_loader_success(proc_bind_thread(machine_first_cpu[0]),
+                               "proc_bind_thread");
         char *per_machine_A[64], *per_machine_B[64];
         per_machine_load(matrix_len, file_size, per_machine_A, per_machine_B);
+        fprintf(stderr, "Matrix loader: all private replicas ready\n");
         for (int m = 0; m < num_machines; m++) {
             g_machine_matrix_A[m] = (int *)per_machine_A[m];
             g_machine_matrix_B[m] = (int *)per_machine_B[m];
@@ -481,7 +574,11 @@ int main(int argc, char *argv[]) {
         PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FLAG_SHARED,
         -1, 0);
-    assert(mm_data.output != MAP_FAILED);
+    if (mm_data.output == MAP_FAILED) {
+        fprintf(stderr, "Matrix loader: shared output mmap failed\n");
+        abort();
+    }
+    fprintf(stderr, "Matrix loader: shared output mapped\n");
 #else
     mm_data.output = (int*)mem_malloc(output_size);
 #endif
@@ -550,11 +647,9 @@ int main(int argc, char *argv[]) {
 
     mem_free(mm_vals.data);
 #ifdef _CHCORE_
-    munmap(mm_data.output, output_size);
-    for (int m = 0; m < num_machines; m++) {
-        free((void *)g_machine_matrix_A[m]);
-        free((void *)g_machine_matrix_B[m]);
-    }
+    require_loader_success(munmap(mm_data.output, output_size),
+                           "output munmap");
+    per_machine_cleanup(file_size);
 #else
     mem_free(mm_data.output);
   #ifndef NO_MMAP

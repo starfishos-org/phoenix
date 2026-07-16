@@ -191,14 +191,17 @@ inline int proc_bind_thread (int cpu_id)
 {
 #if defined _LINUX_ || defined _CHCORE_
     cpu_set_t   cpu_set;
+    int ret;
 
     CPU_ZERO (&cpu_set);
     CPU_SET (cpu_id, &cpu_set);
 #if defined DSM_ENABLED
-    sched_setaffinity(-2, sizeof(cpu_set), &cpu_set);
+    ret = sched_setaffinity(-2, sizeof(cpu_set), &cpu_set);
 #else
-    sched_setaffinity (0, sizeof (cpu_set), &cpu_set);
+    ret = sched_setaffinity (0, sizeof (cpu_set), &cpu_set);
 #endif
+    if (ret != 0)
+        return ret;
     return sched_yield();
 #elif defined (_SOLARIS_)
     return processor_bind (P_LWPID, P_MYID, cpu_id, NULL);
