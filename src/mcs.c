@@ -24,11 +24,12 @@
 * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */ 
 
+#include "synch.h"
+
 #ifdef MR_LOCK_MCS
 
 #include <stdlib.h>
 #include <assert.h>
-#include "synch.h"
 #include "atomic.h"
 
 typedef struct mcs_lock_priv {
