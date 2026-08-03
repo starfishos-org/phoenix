@@ -34,6 +34,20 @@
 #include "stddefines.h"
 #include "processor.h"
 
+#ifdef TQ_DIAG
+#include <stdio.h>
+
+/*
+ * Barrier integrity probe.  tpool_wait() is the only thing that makes a phase's
+ * workers finished as far as map_reduce.c is concerned: it returns, and the
+ * caller then frees the phase's thread_arg blocks and moves the whole task
+ * queue on to the next phase.  If it can ever return while a worker is still
+ * inside its thread function, that next phase runs concurrently with the
+ * previous one -- which is precisely the shape of the PCA corruption.
+ */
+volatile int tq_workers_running = 0;
+#endif
+
 typedef struct {
     sem_t           sem_run;
     unsigned int    *num_workers_done;
@@ -192,8 +206,19 @@ int tpool_wait (tpool_t *tpool)
         return 0;
 
     ret = sem_wait (&tpool->sem_all_workers_done);
-    if (ret != 0) 
+    if (ret != 0)
         return -1;
+
+#ifdef TQ_DIAG
+    {
+        int still = __atomic_load_n(&tq_workers_running, __ATOMIC_SEQ_CST);
+        if (still != 0) {
+            printf("[TQDIAG] BARRIER-BROKEN cpu=%d: tpool_wait returned with "
+                   "%d worker(s) still running (num_workers=%d)\n",
+                   proc_get_cpuid(), still, tpool->num_workers);
+        }
+    }
+#endif
 
     return 0;
 }
@@ -272,7 +297,13 @@ static void* thread_loop (void *arg)
         ret = thread_arg->ret;
 
         /* Run thread function. */
+#ifdef TQ_DIAG
+        __atomic_fetch_add(&tq_workers_running, 1, __ATOMIC_SEQ_CST);
+#endif
         *ret = (*thread_func)(thread_func_arg);
+#ifdef TQ_DIAG
+        __atomic_fetch_sub(&tq_workers_running, 1, __ATOMIC_SEQ_CST);
+#endif
 
         num_workers_done = fetch_and_inc(thread_arg->num_workers_done) + 1;
         if (num_workers_done == *thread_arg->num_workers)

@@ -39,7 +39,7 @@
 static int num_strands_per_chip = 0;
 
 typedef struct {
-    task_t              task; 
+    task_t              task;
     queue_elem_t        queue_elem;
 } tq_entry_t;
 
@@ -47,6 +47,9 @@ typedef struct {
     mr_lock_t  parent;
     uintptr_t  chksum;
     mr_lock_t  *per_thread;
+#ifdef TQ_DIAG
+    volatile int owner;         /* tid + 1 of the thread inside the section */
+#endif
 } tq_lock_t;
 
 struct taskQ_t {
@@ -59,7 +62,103 @@ struct taskQ_t {
      * if it's a problem we can pad it by l1 line size */
     /* per-thread random seed */
     unsigned int    *seeds;
+#ifdef TQ_DIAG
+    uint64_t        magic;      /* TQ_MAGIC while live, poisoned on finalize */
+    int             generation; /* which tq_init() call produced this taskQ */
+    /* Per-queue count of unlocked tq_enqueue_seq() pushes.  Map tasks all go
+     * to queue lgrp (0 here, since loc_mem_to_lgrp() is a stub returning 0);
+     * only gen_reduce_tasks() spreads over every queue.  A nonzero count on a
+     * queue a *map* worker is popping therefore means the main thread has
+     * already moved on to the reduce phase while this phase is still live. */
+    unsigned int    enq[64];
+#endif
  };
+
+#ifdef TQ_DIAG
+#include "processor.h"
+
+/* Number of pool workers currently inside their thread function (tpool.c). */
+extern volatile int tq_workers_running;
+
+#define TQ_MAGIC 0x5451474f4f440001ULL
+
+static int tq_generation_counter = 0;
+
+/* Report a task queue whose state cannot be produced by correct execution.
+ * Returns nonzero if the queue is unusable and the caller must not touch it. */
+static int tq_diag_check (taskQ_t *tq, int idx, int tid, const char *where)
+{
+    queue_t         *q;
+    queue_elem_t    *head;
+
+    if (tq->magic != TQ_MAGIC) {
+        printf("[TQDIAG] %s cpu=%d tid=%d idx=%d tq=%p STALE magic=%llx gen=%d\n",
+               where, proc_get_cpuid(), tid, idx, (void *)tq,
+               (unsigned long long)tq->magic, tq->generation);
+        return 1;
+    }
+
+    if (idx < 0 || idx >= tq->num_queues) {
+        printf("[TQDIAG] %s cpu=%d tid=%d idx=%d OUT-OF-RANGE nq=%d gen=%d\n",
+               where, proc_get_cpuid(), tid, idx, tq->num_queues,
+               tq->generation);
+        return 1;
+    }
+
+    q = tq->queues[idx];
+    if (q == NULL) {
+        printf("[TQDIAG] %s cpu=%d tid=%d idx=%d NULL queue gen=%d\n",
+               where, proc_get_cpuid(), tid, idx, tq->generation);
+        return 1;
+    }
+
+    head = q->lst_list.li_next;
+    if (head == &q->lst_list)
+        return 0;                       /* empty, and consistently so */
+
+    if (head == NULL || head->li_next == NULL || head->li_prev == NULL
+        || head->li_prev != &q->lst_list) {
+        printf("[TQDIAG] %s cpu=%d tid=%d idx=%d gen=%d CORRUPT q=%p "
+               "q.next=%p q.prev=%p head=%p head.next=%p head.prev=%p "
+               "owner=%d enq=%u enq0=%u running=%d\n",
+               where, proc_get_cpuid(), tid, idx, tq->generation, (void *)q,
+               (void *)q->lst_list.li_next, (void *)q->lst_list.li_prev,
+               (void *)head,
+               head ? (void *)head->li_next : NULL,
+               head ? (void *)head->li_prev : NULL,
+               tq->locks[idx].owner,
+               idx < 64 ? tq->enq[idx] : 0u, tq->enq[0],
+               __atomic_load_n(&tq_workers_running, __ATOMIC_SEQ_CST));
+        return 1;
+    }
+
+    return 0;
+}
+
+static void tq_diag_enter (taskQ_t *tq, int idx, int tid)
+{
+    int prev = tq->locks[idx].owner;
+
+    if (prev != 0) {
+        printf("[TQDIAG] MUTEX-BROKEN cpu=%d tid=%d idx=%d gen=%d "
+               "already owned by tid=%d\n",
+               proc_get_cpuid(), tid, idx, tq->generation, prev - 1);
+    }
+    tq->locks[idx].owner = tid + 1;
+}
+
+static void tq_diag_leave (taskQ_t *tq, int idx, int tid)
+{
+    int cur = tq->locks[idx].owner;
+
+    if (cur != tid + 1) {
+        printf("[TQDIAG] MUTEX-STOLEN cpu=%d tid=%d idx=%d gen=%d "
+               "owner=%d on release\n",
+               proc_get_cpuid(), tid, idx, tq->generation, cur - 1);
+    }
+    tq->locks[idx].owner = 0;
+}
+#endif /* TQ_DIAG */
 
 typedef int (*dequeue_fn)(taskQ_t *, int, int, queue_elem_t**);
 
@@ -130,6 +229,15 @@ static inline taskQ_t* tq_init_normal(int numThreads)
         if (!tq_queue_init(tq, i))
             goto fail_tq_init;
 
+#ifdef TQ_DIAG
+    tq->generation = ++tq_generation_counter;
+    tq->magic = TQ_MAGIC;
+    printf("[TQDIAG] tq_init gen=%d tq=%p nq=%d nthreads=%d q0=%p q3=%p\n",
+           tq->generation, (void *)tq, tq->num_queues, tq->num_threads,
+           (void *)tq->queues[0],
+           (void *)tq->queues[tq->num_queues > 3 ? 3 : 0]);
+#endif
+
     return tq;
 
 fail_tq_init:
@@ -162,6 +270,19 @@ static void tq_queue_destroy(taskQ_t* tq, unsigned int idx)
     uintptr_t       chksum;
 
     assert (idx < tq->num_queues);
+
+#ifdef TQ_DIAG
+    /*
+     * tq_empty_queue() pops without the lock, on the assumption that no worker
+     * can still be in the queue by the time the taskQ is finalized.
+     */
+    if (tq->locks[idx].owner != 0) {
+        printf("[TQDIAG] UNLOCKED-FINALIZE cpu=%d idx=%d gen=%d races tid=%d "
+               "holding the lock\n",
+               proc_get_cpuid(), (int)idx, tq->generation,
+               tq->locks[idx].owner - 1);
+    }
+#endif
 
     tq_empty_queue(tq->queues[idx]);
     tq_free_queue(tq->queues[idx]);
@@ -278,6 +399,11 @@ static inline void tq_finalize_normal(taskQ_t* tq)
     assert (tq->free_queues != NULL);
     assert (tq->locks != NULL);
 
+#ifdef TQ_DIAG
+    printf("[TQDIAG] tq_finalize gen=%d tq=%p\n", tq->generation, (void *)tq);
+    tq->magic = 0xdeaddeaddeaddeadULL;
+#endif
+
     /* destroy all queues */
     for (i = 0; i < tq->num_queues; ++i) {
         tq_queue_destroy(tq, i);
@@ -346,6 +472,23 @@ int tq_enqueue_seq (taskQ_t* tq, task_t *task, int lgrp)
     mem_memcpy (&entry->task, task, sizeof (task_t));
 
     index = (lgrp < 0) ? rand() % tq->num_queues : lgrp % tq->num_queues;
+#ifdef TQ_DIAG
+    if (index < 64)
+        tq->enq[index]++;
+    /*
+     * This push takes no lock.  It is only safe because every caller
+     * (gen_map_tasks / gen_reduce_tasks) runs on the main thread between
+     * phases, with no worker touching the queue.  If a worker is inside the
+     * locked section right now, that assumption is broken -- and an unlocked
+     * push racing a locked pop is exactly the shape of the observed damage.
+     */
+    if (tq->locks[index].owner != 0) {
+        printf("[TQDIAG] UNLOCKED-ENQUEUE cpu=%d idx=%d gen=%d races tid=%d "
+               "holding the lock\n",
+               proc_get_cpuid(), index, tq->generation,
+               tq->locks[index].owner - 1);
+    }
+#endif
     queue_push_back (tq->queues[index], &entry->queue_elem);
 
     return 0;
@@ -364,6 +507,16 @@ static inline int tq_elem_into_free_seq (
 {
     queue_elem_t    *queue_elem = NULL;
     int             ret;
+
+#ifdef TQ_DIAG
+    /*
+     * Report but do NOT suppress.  Suppressing turns the queue into "empty",
+     * so every map worker exits immediately and PCA never finishes -- which
+     * also means the run cannot answer whether the crash is gone.  Let the
+     * original code run into the fault it would have hit anyway.
+     */
+    (void)tq_diag_check (tq, idx, tid, "pop");
+#endif
 
     ret = queue_pop_front (tq->queues[idx], &queue_elem);
     if (ret != 0)
@@ -388,7 +541,13 @@ static inline int tq_elem_into_free (
     int             ret;
 
     lock_acquire (tq->locks[idx].per_thread[tid]);
+#ifdef TQ_DIAG
+    tq_diag_enter (tq, idx, tid);
+#endif
     ret = tq_elem_into_free_seq (tq, idx, tid, qe);
+#ifdef TQ_DIAG
+    tq_diag_leave (tq, idx, tid);
+#endif
     lock_release (tq->locks[idx].per_thread[tid]);
 
     return ret;
@@ -426,6 +585,16 @@ static inline int tq_dequeue_normal_internal (
     assert (task != NULL);
 
     mem_memset (task, 0, sizeof (task_t));
+
+#ifdef TQ_DIAG
+    if (tq->magic != TQ_MAGIC) {
+        printf("[TQDIAG] dequeue cpu=%d tid=%d lgrp=%d tq=%p STALE magic=%llx "
+               "gen=%d steal=%d\n",
+               proc_get_cpuid(), tid, lgrp, (void *)tq,
+               (unsigned long long)tq->magic, tq->generation, allow_steal);
+        return 0;
+    }
+#endif
 
     index = (lgrp < 0) ? rand_r(&tq->seeds[tid]) : lgrp;
     index %= tq->num_queues;
