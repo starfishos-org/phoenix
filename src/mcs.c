@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "atomic.h"
+#include "memory.h"
 
 typedef struct mcs_lock_priv {
     struct mcs_lock         *mcs_head;
@@ -62,6 +63,23 @@ static mr_lock_t mcs_alloc_per_thread(mr_lock_t l)
     priv->next = NULL;
     priv->locked = 0;
 
+    return priv;
+}
+
+mr_lock_t mcs_lock_alloc_shared(void *arena_ptr)
+{
+    mem_shared_arena_t *arena = arena_ptr;
+    mcs_lock *lock = mem_shared_arena_calloc(arena, 1, sizeof(*lock));
+
+    return lock;
+}
+
+mr_lock_t mcs_lock_alloc_per_thread_shared(mr_lock_t l, void *arena_ptr)
+{
+    mem_shared_arena_t *arena = arena_ptr;
+    mcs_lock_priv *priv = mem_shared_arena_calloc(arena, 1, sizeof(*priv));
+
+    priv->mcs_head = l;
     return priv;
 }
 

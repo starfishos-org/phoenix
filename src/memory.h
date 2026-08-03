@@ -29,6 +29,8 @@
 
 #include <sys/types.h>
 
+typedef struct mem_shared_arena mem_shared_arena_t;
+
 void *mem_malloc (size_t size);
 void *mem_malloc_here (size_t size);
 void *mem_calloc (size_t num, size_t size);
@@ -36,5 +38,15 @@ void *mem_realloc (void *ptr, size_t size);
 void *mem_memcpy (void *dest, const void *src, size_t size);
 void *mem_memset (void *s, int c, size_t n);
 void mem_free (void *ptr);
+
+void *mem_shared_malloc (size_t size);
+void *mem_shared_calloc (size_t num, size_t size);
+void mem_shared_free (void *ptr);
+
+mem_shared_arena_t *mem_shared_arena_create (size_t chunk_size);
+void *mem_shared_arena_alloc (mem_shared_arena_t *arena, size_t size);
+void *mem_shared_arena_calloc (
+    mem_shared_arena_t *arena, size_t num, size_t size);
+void mem_shared_arena_destroy (mem_shared_arena_t *arena);
 
 #endif // MEMORY_H_

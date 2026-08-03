@@ -50,5 +50,9 @@ void        lock_release(mr_lock_t l);
 mr_lock_t   lock_alloc(void);
 mr_lock_t   lock_alloc_per_thread(mr_lock_t parent);
 void        lock_free_per_thread(mr_lock_t mr);
+mr_lock_t   lock_alloc_shared(void *arena);
+mr_lock_t   lock_alloc_per_thread_shared(mr_lock_t parent, void *arena);
+void        lock_free_shared(mr_lock_t l);
+void        lock_free_per_thread_shared(mr_lock_t l);
 
 #endif /* SYNCH_H_ */

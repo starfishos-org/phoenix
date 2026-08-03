@@ -31,5 +31,6 @@ int loc_get_lgrp_size ();
 int loc_get_num_lgrps ();
 int loc_get_lgrp ();
 int loc_mem_to_lgrp (void *);
+int loc_get_lgrp_first_cpu (int lgrp);
 
 #endif /* LOCALITY_H_ */

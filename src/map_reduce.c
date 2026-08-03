@@ -69,6 +69,7 @@
 #define DEFAULT_KEYVAL_ARR_LEN      10
 #define DEFAULT_VALS_ARR_LEN        10
 #define L2_CACHE_LINE_SIZE          64
+#define MAX_LOCALITY_GROUPS         64
 /* End tunables. */
 
 /* Debug printf */
@@ -113,6 +114,8 @@ typedef struct
         struct {
             pthread_t tid;
             int curr_task;
+            int map_lgrp;
+            int map_tasks;
         };
         char pad[L2_CACHE_LINE_SIZE];
     };
@@ -135,6 +138,7 @@ typedef struct
 {
     /* Parameters. */
     int num_map_tasks;              /* # of map tasks. */
+    int next_map_task;              /* Next diagnostic map-task identifier. */
     int num_reduce_tasks;           /* # of reduce tasks. */
     int chunk_size;                 /* # of units of data for each map task. */
     int num_procs;                  /* # of processors to run on. */
@@ -146,6 +150,8 @@ typedef struct
 
     bool oneOutputQueuePerMapTask;      /* One output queue per map task? */
     bool oneOutputQueuePerReduceTask;   /* One output queue per reduce task? */
+    bool shared_runtime;
+    bool map_only;
 
     int intermediate_task_alloc_len;
 
@@ -156,6 +162,7 @@ typedef struct
     partition_t partition;          /* Partition function. */     
     splitter_t splitter;            /* Splitter function. */
     locator_t locator;              /* Locator function. */
+    task_lgrp_t task_lgrp;          /* Direct task locality selector. */
     key_cmp_t key_cmp;              /* Key comparator function. */
 
     /* Structures. */
@@ -176,6 +183,8 @@ typedef struct
 
     taskQ_t         *taskQueue;     /* Queues of tasks. */
     tpool_t         *tpool;         /* Thread pool. */
+
+    int planned_map_tasks[MAX_LOCALITY_GROUPS];
 } mr_env_t;
 
 #ifdef TIMING0
@@ -198,6 +207,9 @@ typedef struct
 
 static inline mr_env_t* env_init (map_reduce_args_t *);
 static void env_fini(mr_env_t* env);
+static void *env_malloc(mr_env_t *env, size_t size);
+static void *env_calloc(mr_env_t *env, size_t num, size_t size);
+static void env_free(mr_env_t *env, void *ptr);
 static inline void env_print (mr_env_t* env);
 static inline void start_workers (mr_env_t* env, thread_arg_t *);
 static inline void *start_my_work (thread_arg_t *);
@@ -261,7 +273,7 @@ map_reduce (map_reduce_args_t * args)
        return -1;
     }
     //env_print (env);
-    env->taskQueue = tq_init (env->num_map_threads);
+    env->taskQueue = tq_init (env->num_map_threads, env->shared_runtime);
     assert (env->taskQueue != NULL);
 
     /* Reuse thread pool. */
@@ -269,7 +281,7 @@ map_reduce (map_reduce_args_t * args)
     if (env->tpool == NULL) {
         tpool_t *tpool;
 
-        tpool = tpool_create (env->num_map_threads);
+        tpool = tpool_create (env->num_map_threads, env->shared_runtime);
         CHECK_ERROR (tpool == NULL);
 
         env->tpool = tpool;
@@ -297,6 +309,14 @@ map_reduce (map_reduce_args_t * args)
 #ifdef TIMING0
     fprintf (stderr, "map phase: %u\n", time_diff (&end, &begin));
 #endif
+
+    if (env->map_only) {
+        args->result->data = NULL;
+        args->result->length = 0;
+        env_fini(env);
+        CHECK_ERROR (pthread_key_delete (env_key));
+        return 0;
+    }
 
     dprintf("In scheduler, all map tasks are done, now scheduling reduce tasks\n");
     
@@ -358,7 +378,32 @@ static void env_fini (mr_env_t* env)
     for (i = 0; i < TASK_TYPE_TOTAL; i++)
         sched_policy_put(env->schedPolicies[i]);
 
-    mem_free (env);
+    if (env->shared_runtime)
+        mem_shared_free(env);
+    else
+        mem_free(env);
+}
+
+static void *env_malloc(mr_env_t *env, size_t size)
+{
+    if (env->shared_runtime)
+        return mem_shared_malloc(size);
+    return mem_malloc(size);
+}
+
+static void *env_calloc(mr_env_t *env, size_t num, size_t size)
+{
+    if (env->shared_runtime)
+        return mem_shared_calloc(num, size);
+    return mem_calloc(num, size);
+}
+
+static void env_free(mr_env_t *env, void *ptr)
+{
+    if (env->shared_runtime)
+        mem_shared_free(ptr);
+    else
+        mem_free(ptr);
 }
 
 /* Setup global state. */
@@ -369,14 +414,17 @@ env_init (map_reduce_args_t *args)
     int         i;
     int         num_procs;
 
-    env = mem_malloc (sizeof (mr_env_t));
+    if (args->shared_runtime)
+        env = mem_shared_calloc(1, sizeof(mr_env_t));
+    else
+        env = mem_calloc(1, sizeof(mr_env_t));
     if (env == NULL) {
        return NULL;
     }
 
-    mem_memset (env, 0, sizeof (mr_env_t));
-
     env->args = args;
+    env->shared_runtime = args->shared_runtime;
+    env->map_only = args->map_only;
 
     /* 1. Determine paramenters. */
 
@@ -460,30 +508,33 @@ env_init (map_reduce_args_t *args)
     env->partition = (args->partition) ? args->partition : default_partition;
     env->splitter = (args->splitter) ? args->splitter : array_splitter;
     env->locator = args->locator;
+    env->task_lgrp = args->task_lgrp;
     env->key_cmp = args->key_cmp;
 
     /* 2. Initialize structures. */
 
-    env->intermediate_vals = (keyvals_arr_t **)mem_malloc (
-        env->intermediate_task_alloc_len * sizeof (keyvals_arr_t*));
+    if (!env->map_only) {
+        env->intermediate_vals = (keyvals_arr_t **)mem_malloc (
+            env->intermediate_task_alloc_len * sizeof (keyvals_arr_t*));
 
-    for (i = 0; i < env->intermediate_task_alloc_len; i++)
-    {
-        env->intermediate_vals[i] = (keyvals_arr_t *)mem_calloc (
-            env->num_reduce_tasks, sizeof (keyvals_arr_t));
-    }
+        for (i = 0; i < env->intermediate_task_alloc_len; i++)
+        {
+            env->intermediate_vals[i] = (keyvals_arr_t *)mem_calloc (
+                env->num_reduce_tasks, sizeof (keyvals_arr_t));
+        }
 
-    if (env->oneOutputQueuePerReduceTask)
-    {
-        env->final_vals = 
-            (keyval_arr_t *)mem_calloc (
-                env->num_reduce_tasks, sizeof (keyval_arr_t));
-    }
-    else
-    {
-        env->final_vals =
-            (keyval_arr_t *)mem_calloc (
-                env->num_reduce_threads, sizeof (keyval_arr_t));
+        if (env->oneOutputQueuePerReduceTask)
+        {
+            env->final_vals =
+                (keyval_arr_t *)mem_calloc (
+                    env->num_reduce_tasks, sizeof (keyval_arr_t));
+        }
+        else
+        {
+            env->final_vals =
+                (keyval_arr_t *)mem_calloc (
+                    env->num_reduce_threads, sizeof (keyval_arr_t));
+        }
     }
 
     for (i = 0; i < TASK_TYPE_TOTAL; i++) {
@@ -580,11 +631,11 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     task_type = th_arg->task_type;
     num_threads = getNumTaskThreads (env, task_type);
 
-    env->tinfo = (thread_info_t *)mem_calloc (
+    env->tinfo = (thread_info_t *)env_calloc (env,
         num_threads, sizeof (thread_info_t));
     th_arg->env = env;
 
-    th_arg_array = (thread_arg_t **)mem_malloc (
+    th_arg_array = (thread_arg_t **)env_malloc (env,
         sizeof (thread_arg_t *) * num_threads);
     CHECK_ERROR (th_arg_array == NULL);
 
@@ -594,7 +645,7 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
         th_arg->cpu_id = cpu;
         th_arg->thread_id = thread_index;
 
-        th_arg_array[thread_index] = mem_malloc (sizeof (thread_arg_t));
+        th_arg_array[thread_index] = env_malloc (env, sizeof (thread_arg_t));
         CHECK_ERROR (th_arg_array[thread_index] == NULL);
         mem_memcpy (th_arg_array[thread_index], th_arg, sizeof (thread_arg_t));
     }
@@ -614,11 +665,39 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     combiner_time += timing->combiner_time;
     mem_free (timing);
 #endif
-    mem_free (th_arg_array[0]);
+    env_free (env, th_arg_array[0]);
 
     /* Barrier, wait for all threads to finish. */
     CHECK_ERROR (tpool_wait (env->tpool));
     rets = tpool_get_results (env->tpool);
+
+    if (task_type == TASK_TYPE_MAP && env->args->map_phase_name != NULL) {
+        int executed[MAX_LOCALITY_GROUPS] = {0};
+        int workers[MAX_LOCALITY_GROUPS] = {0};
+        int num_lgrps = loc_get_num_lgrps();
+        int total_executed = 0;
+
+        assert(num_lgrps > 0 && num_lgrps <= MAX_LOCALITY_GROUPS);
+        for (thread_index = 0; thread_index < num_threads; ++thread_index) {
+            int lgrp = env->tinfo[thread_index].map_lgrp;
+            assert(lgrp >= 0 && lgrp < num_lgrps);
+            executed[lgrp] += env->tinfo[thread_index].map_tasks;
+            workers[lgrp]++;
+        }
+        for (int lgrp = 0; lgrp < num_lgrps; ++lgrp) {
+            printf("[Phoenix locality] phase=%s lgrp=%d planned=%d "
+                   "executed=%d workers=%d\n",
+                   env->args->map_phase_name, lgrp,
+                   env->planned_map_tasks[lgrp], executed[lgrp], workers[lgrp]);
+            total_executed += executed[lgrp];
+            if (env->args->require_map_lgrp_coverage) {
+                assert(env->planned_map_tasks[lgrp] > 0);
+                assert(executed[lgrp] == env->planned_map_tasks[lgrp]);
+                assert(workers[lgrp] > 0);
+            }
+        }
+        assert(total_executed == env->num_map_tasks);
+    }
 
     for (thread_index = 1; thread_index < num_threads; ++thread_index)
     {
@@ -630,10 +709,10 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
         combiner_time += timing->combiner_time;
         mem_free (timing);
 #endif
-        mem_free (th_arg_array[thread_index]);
+        env_free (env, th_arg_array[thread_index]);
     }
 
-    mem_free (th_arg_array);
+    env_free (env, th_arg_array);
     mem_free (rets);
 
 #ifdef TIMING0
@@ -664,7 +743,7 @@ start_workers (mr_env_t* env, thread_arg_t *th_arg)
     }
 #endif
 
-    mem_free(env->tinfo);
+    env_free(env, env->tinfo);
     dprintf("Status: All tasks have completed\n"); 
 }
 
@@ -702,11 +781,13 @@ static bool map_worker_do_next_task (
         return false;
     }
 
-    curr_task = env->num_map_tasks++;
+    curr_task = __atomic_fetch_add(&env->next_map_task, 1, __ATOMIC_RELAXED);
     env->tinfo[thread_index].curr_task = curr_task;
 
     thread_func_arg.length = map_task.len;
     thread_func_arg.data = (void *)map_task.data;
+    thread_func_arg.map_data = env->args->map_data;
+    thread_func_arg.lgrp = lgrp;
 
     // dprintf("Task %d: cpu_id -> %d - Started\n", curr_task, thread_index);
 
@@ -760,12 +841,14 @@ map_worker (void *args)
 #endif
 
     mwta.lgrp = loc_get_lgrp();
+    env->tinfo[thread_index].map_lgrp = mwta.lgrp;
 
     get_time0 (&work_begin);
     while (map_worker_do_next_task (env, thread_index, &mwta)) {
         user_time += mwta.run_time;
         num_assigned++;
     }
+    env->tinfo[thread_index].map_tasks = num_assigned;
     get_time0 (&work_end);
 
 #ifdef TIMING0
@@ -1128,8 +1211,8 @@ static int gen_map_tasks_distribute_lgrp (
     int             num_lgrps;
     int             lgrp;
 
-    num_lgrps = env->num_map_threads / loc_get_lgrp_size();
-    if (num_lgrps == 0) num_lgrps = 1;
+    num_lgrps = loc_get_num_lgrps();
+    assert(num_lgrps > 0 && num_lgrps <= MAX_LOCALITY_GROUPS);
 
     tasks_per_lgrp = num_map_tasks / num_lgrps;
     tasks_leftover = num_map_tasks - tasks_per_lgrp * num_lgrps;
@@ -1159,6 +1242,8 @@ static int gen_map_tasks_distribute_lgrp (
                 mem_free (task);
                 return -1;
             }
+
+            env->planned_map_tasks[lgrp]++;
 
             mem_free (task);
             remaining_cur_lgrp_tasks--;
@@ -1191,8 +1276,12 @@ static int gen_map_tasks_distribute_locator (
 
         args.length = task->task.len;
         args.data = (void*)task->task.data;
+        args.map_data = env->args->map_data;
+        args.lgrp = -1;
 
-        if (env->locator != NULL) {
+        if (env->task_lgrp != NULL) {
+            lgrp = env->task_lgrp(&args);
+        } else if (env->locator != NULL) {
             void    *addr;
             addr = env->locator (&args);
             lgrp = loc_mem_to_lgrp (addr);
@@ -1200,11 +1289,15 @@ static int gen_map_tasks_distribute_locator (
             lgrp = loc_mem_to_lgrp (args.data);
         }
 
+        assert(lgrp >= 0 && lgrp < loc_get_num_lgrps());
+
         task->task.v[3] = lgrp;         /* For debugging. */
         if (tq_enqueue_seq (env->taskQueue, &task->task, lgrp) != 0) {
             mem_free (task);
             return -1;
         }
+
+        env->planned_map_tasks[lgrp]++;
 
         mem_free (task);
     }
@@ -1221,8 +1314,8 @@ static int gen_map_tasks_distribute_locator (
 static int gen_map_tasks_distribute (
     mr_env_t* env, int num_map_tasks, queue_t* q)
 {
-    if ((env->splitter != array_splitter) && 
-        (env->locator == NULL)) {
+    if ((env->splitter != array_splitter) &&
+        (env->locator == NULL) && (env->task_lgrp == NULL)) {
         return gen_map_tasks_distribute_lgrp (env, num_map_tasks, q);
     } else {
         return gen_map_tasks_distribute_locator (env, num_map_tasks, q);
