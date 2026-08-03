@@ -174,6 +174,18 @@ inline int loc_get_lgrp ()
 #endif
 }
 
+inline int loc_get_lgrp_first_cpu (int lgrp)
+{
+#if defined _LINUX_ || defined _CHCORE_
+    init_lgrps();
+    assert(lgrp >= 0 && lgrp < lgrp_num);
+    return lgrp_first_cpu[lgrp];
+#elif defined (_SOLARIS_)
+    (void)lgrp;
+    return 0;
+#endif
+}
+
 /* Retrieve the locality group of the physical memory that backs
    the virtual address ADDR. */
 inline int loc_mem_to_lgrp (void *addr)

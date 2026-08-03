@@ -27,12 +27,14 @@
 #ifndef TPOOL_H_
 #define TPOOL_H_
 
+#include <stdbool.h>
+
 struct tpool_t;
 typedef struct tpool_t tpool_t;
 
 typedef void *(*thread_func)(void *);
 
-tpool_t* tpool_create (int num_threads);
+tpool_t* tpool_create (int num_threads, bool shared_memory);
 int tpool_set (tpool_t *tpool, thread_func thread_func, void **args, int num_workers);
 int tpool_begin (tpool_t *tpool);
 int tpool_wait (tpool_t *tpool);

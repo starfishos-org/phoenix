@@ -70,33 +70,71 @@ struct tpool_t {
     void            **args;
     pthread_t       *threads;
     thread_arg_t    *thread_args;
+    bool            shared_memory;
+    mem_shared_arena_t *shared_arena;
 };
 
 static void* thread_loop (void *);
 
-tpool_t* tpool_create (int num_threads)
+static void *tpool_malloc(tpool_t *tpool, size_t size)
+{
+    if (tpool->shared_memory)
+        return mem_shared_arena_alloc(tpool->shared_arena, size);
+    return mem_malloc(size);
+}
+
+static void *tpool_calloc(tpool_t *tpool, size_t num, size_t size)
+{
+    if (tpool->shared_memory)
+        return mem_shared_arena_calloc(tpool->shared_arena, num, size);
+    return mem_calloc(num, size);
+}
+
+static void tpool_mem_free(tpool_t *tpool, void *ptr)
+{
+    if (!tpool->shared_memory) {
+        mem_free(ptr);
+    } else if (ptr == tpool) {
+        mem_shared_arena_destroy(tpool->shared_arena);
+    }
+}
+
+tpool_t* tpool_create (int num_threads, bool shared_memory)
 {
     int             i, ret;
     tpool_t         *tpool;
     pthread_attr_t  attr;
 
-    tpool = mem_calloc (1, sizeof (tpool_t));
+    mem_shared_arena_t *arena = NULL;
+
+    if (shared_memory) {
+        arena = mem_shared_arena_create(0);
+        tpool = mem_shared_arena_calloc(arena, 1, sizeof(tpool_t));
+    } else {
+        tpool = mem_calloc(1, sizeof(tpool_t));
+    }
     if (tpool == NULL) 
         return NULL;
+    tpool->shared_memory = shared_memory;
+    tpool->shared_arena = arena;
+    if (shared_memory)
+        fprintf(stderr, "[Phoenix placement] tpool=%p policy=shared arena=%p\n",
+                (void *)tpool, (void *)arena);
 
     tpool->num_threads = num_threads;
     tpool->num_workers = num_threads;
 
-    tpool->args = (void **)mem_malloc (sizeof (void *) * num_threads);
+    tpool->args = (void **)tpool_malloc (tpool, sizeof (void *) * num_threads);
     if (tpool->args == NULL) 
         goto fail_args;
 
-    tpool->threads = (pthread_t *)mem_malloc (sizeof (pthread_t) * num_threads);
+    tpool->threads = (pthread_t *)tpool_malloc (
+        tpool, sizeof (pthread_t) * num_threads);
     if (tpool->threads == NULL) 
         goto fail_threads;
 
-    tpool->thread_args = (thread_arg_t *)mem_malloc (
-        sizeof (thread_arg_t) * num_threads);
+    tpool->thread_args = (thread_arg_t *)tpool_calloc (
+        tpool, num_threads, sizeof (thread_arg_t));
     if (tpool->thread_args == NULL) 
         goto fail_thread_args;
 
@@ -124,7 +162,8 @@ tpool_t* tpool_create (int num_threads)
         tpool->thread_args[i].die = &tpool->die;
         tpool->thread_args[i].thread_func = &tpool->thread_func;
         tpool->thread_args[i].thread_func_arg = &tpool->args[i];
-        tpool->thread_args[i].ret = (void **)mem_malloc (sizeof (void *));
+        tpool->thread_args[i].ret = (void **)tpool_malloc (
+            tpool, sizeof (void *));
         CHECK_ERROR (tpool->thread_args[i].ret == NULL);
         tpool->thread_args[i].num_workers = &tpool->num_workers;
         tpool->thread_args[i].cpu_id = i;
@@ -145,12 +184,13 @@ fail_thread_create:
         --i;
     }
 fail_all_workers_done:
-    mem_free (tpool->thread_args);
+    tpool_mem_free (tpool, tpool->thread_args);
 fail_thread_args:
-    mem_free (tpool->threads);
+    tpool_mem_free (tpool, tpool->threads);
 fail_threads:
-    mem_free (tpool->args);
+    tpool_mem_free (tpool, tpool->args);
 fail_args:
+    tpool_mem_free (tpool, tpool);
 
     return NULL;
 }
@@ -253,7 +293,7 @@ int tpool_destroy (tpool_t *tpool)
     tpool->num_workers_done = 0;
     
     for (i = 0; i < tpool->num_threads; ++i) {
-        mem_free (tpool->thread_args[i].ret);
+        tpool_mem_free (tpool, tpool->thread_args[i].ret);
 
         tpool->die = 1;
         sem_post(&tpool->thread_args[i].sem_run);
@@ -262,11 +302,11 @@ int tpool_destroy (tpool_t *tpool)
     sem_wait(&tpool->sem_all_workers_done);
 
     sem_destroy(&tpool->sem_all_workers_done);
-    mem_free (tpool->args);
-    mem_free (tpool->threads);
-    mem_free (tpool->thread_args);
+    tpool_mem_free (tpool, tpool->args);
+    tpool_mem_free (tpool, tpool->threads);
+    tpool_mem_free (tpool, tpool->thread_args);
 
-    mem_free (tpool);
+    tpool_mem_free (tpool, tpool);
 
     return result;
 }

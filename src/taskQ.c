@@ -62,6 +62,8 @@ struct taskQ_t {
      * if it's a problem we can pad it by l1 line size */
     /* per-thread random seed */
     unsigned int    *seeds;
+    bool            shared_memory;
+    mem_shared_arena_t *shared_arena;
 #ifdef TQ_DIAG
     uint64_t        magic;      /* TQ_MAGIC while live, poisoned on finalize */
     int             generation; /* which tq_init() call produced this taskQ */
@@ -162,7 +164,7 @@ static void tq_diag_leave (taskQ_t *tq, int idx, int tid)
 
 typedef int (*dequeue_fn)(taskQ_t *, int, int, queue_elem_t**);
 
-static inline taskQ_t* tq_init_normal(int numThreads);
+static inline taskQ_t* tq_init_normal(int numThreads, bool shared_memory);
 static inline void tq_finalize_normal(taskQ_t* tq);
 static inline int tq_dequeue_normal(
     taskQ_t* tq, task_t* task, int lgrp, int tid);
@@ -174,15 +176,18 @@ static inline int tq_dequeue_normal_internal (
     taskQ_t* tq, task_t* task, int lgrp, int tid, dequeue_fn dequeue_fn,
     int allow_steal);
 
-static queue_t* tq_alloc_queue(void);
-static void tq_free_queue(queue_t* q);
+static void *tq_alloc(taskQ_t *tq, size_t size);
+static void *tq_calloc(taskQ_t *tq, size_t num, size_t size);
+static void tq_free(taskQ_t *tq, void *ptr);
+static queue_t* tq_alloc_queue(taskQ_t *tq);
+static void tq_free_queue(taskQ_t *tq, queue_t* q);
 static int tq_queue_init(taskQ_t* tq, unsigned int idx);
 static void tq_queue_destroy(taskQ_t* tq, unsigned int idx);
-static void tq_empty_queue(queue_t* q);
+static void tq_empty_queue(taskQ_t *tq, queue_t* q);
 
-taskQ_t* tq_init (int num_threads)
+taskQ_t* tq_init (int num_threads, bool shared_memory)
 {
-    return tq_init_normal(num_threads);
+    return tq_init_normal(num_threads, shared_memory);
 }
 
 void tq_reset (taskQ_t* tq, int num_threads)
@@ -192,15 +197,26 @@ void tq_reset (taskQ_t* tq, int num_threads)
 /**
  * Initialize task queue for a normal machine
  */
-static inline taskQ_t* tq_init_normal(int numThreads)
+static inline taskQ_t* tq_init_normal(int numThreads, bool shared_memory)
 {
     int             i;
     taskQ_t         *tq = NULL;
+    mem_shared_arena_t *arena = NULL;
 
-    tq = mem_calloc(1, sizeof(taskQ_t));
+    if (shared_memory) {
+        arena = mem_shared_arena_create(0);
+        tq = mem_shared_arena_calloc(arena, 1, sizeof(taskQ_t));
+    } else {
+        tq = mem_calloc(1, sizeof(taskQ_t));
+    }
     if (tq == NULL) {
         return NULL;
     }
+    tq->shared_memory = shared_memory;
+    tq->shared_arena = arena;
+    if (shared_memory)
+        printf("[Phoenix placement] taskq=%p policy=shared arena=%p\n",
+               (void *)tq, (void *)arena);
 
     /* XXX should this be local? */
     num_strands_per_chip = loc_get_lgrp_size ();
@@ -210,17 +226,17 @@ static inline taskQ_t* tq_init_normal(int numThreads)
     if (tq->num_queues == 0)
         tq->num_queues = 1;
 
-    tq->queues = (queue_t **)mem_calloc (tq->num_queues, sizeof (queue_t *));
+    tq->queues = (queue_t **)tq_calloc (tq, tq->num_queues, sizeof (queue_t *));
     if (tq->queues == NULL) goto fail_queues;
 
-    tq->free_queues = (queue_t **)mem_calloc (
+    tq->free_queues = (queue_t **)tq_calloc (tq,
         tq->num_queues, sizeof (queue_t *));
     if (tq->free_queues == NULL) goto fail_free_queues;
 
-    tq->locks = (tq_lock_t *)mem_calloc (tq->num_queues, sizeof (tq_lock_t));
+    tq->locks = (tq_lock_t *)tq_calloc (tq, tq->num_queues, sizeof (tq_lock_t));
     if (tq->locks == NULL) goto fail_locks;
 
-    tq->seeds = (unsigned int*)mem_calloc(
+    tq->seeds = (unsigned int*)tq_calloc(tq,
         tq->num_threads, sizeof(unsigned int));
     if (tq->seeds == NULL) goto fail_seeds;
     mem_memset(tq->seeds, 0, sizeof(unsigned int) * tq->num_threads);
@@ -247,15 +263,18 @@ fail_tq_init:
         tq_queue_destroy(tq, i);
         --i;
     }
-    mem_free(tq->seeds);
+    tq_free(tq, tq->seeds);
 fail_seeds:
-    mem_free(tq->locks);
+    tq_free(tq, tq->locks);
 fail_locks:
-    mem_free(tq->free_queues);
+    tq_free(tq, tq->free_queues);
 fail_free_queues:
-    mem_free(tq->queues);
+    tq_free(tq, tq->queues);
 fail_queues:
-    mem_free(tq);
+    if (shared_memory)
+        mem_shared_arena_destroy(arena);
+    else
+        mem_free(tq);
     return NULL;
 }
 
@@ -284,22 +303,28 @@ static void tq_queue_destroy(taskQ_t* tq, unsigned int idx)
     }
 #endif
 
-    tq_empty_queue(tq->queues[idx]);
-    tq_free_queue(tq->queues[idx]);
+    tq_empty_queue(tq, tq->queues[idx]);
+    tq_free_queue(tq, tq->queues[idx]);
 
-    tq_empty_queue(tq->free_queues[idx]);
-    tq_free_queue(tq->free_queues[idx]);
+    tq_empty_queue(tq, tq->free_queues[idx]);
+    tq_free_queue(tq, tq->free_queues[idx]);
 
     /* free all lock data associated with queue */
     chksum = 0;
     for (j = 0; j < tq->num_threads; j++) {
         chksum += (uintptr_t)tq->locks[idx].per_thread[j];
-        lock_free_per_thread(tq->locks[idx].per_thread[j]);
+        if (tq->shared_memory)
+            lock_free_per_thread_shared(tq->locks[idx].per_thread[j]);
+        else
+            lock_free_per_thread(tq->locks[idx].per_thread[j]);
     }
 
-    lock_free (tq->locks[idx].parent);
+    if (tq->shared_memory)
+        lock_free_shared(tq->locks[idx].parent);
+    else
+        lock_free(tq->locks[idx].parent);
 
-    mem_free (tq->locks[idx].per_thread);
+    tq_free(tq, tq->locks[idx].per_thread);
     tq->locks[idx].per_thread = NULL;
 }
 
@@ -313,22 +338,30 @@ static int tq_queue_init(taskQ_t* tq, unsigned int idx)
 
     assert (idx < tq->num_queues);
 
-    tq->queues[idx] = tq_alloc_queue();
+    tq->queues[idx] = tq_alloc_queue(tq);
     if (tq->queues[idx] == NULL) return 0;
 
-    tq->free_queues[idx] = tq_alloc_queue();
+    tq->free_queues[idx] = tq_alloc_queue(tq);
     if (tq->free_queues[idx] == NULL) goto fail_free_queue;
 
-    tq->locks[idx].parent = lock_alloc();
+    if (tq->shared_memory)
+        tq->locks[idx].parent = lock_alloc_shared(tq->shared_arena);
+    else
+        tq->locks[idx].parent = lock_alloc();
 
-    tq->locks[idx].per_thread = (mr_lock_t *)mem_calloc(
+    tq->locks[idx].per_thread = (mr_lock_t *)tq_calloc(tq,
         tq->num_threads, sizeof(mr_lock_t));
     if (tq->locks[idx].per_thread == NULL) goto fail_priv_alloc;
 
     tq->locks[idx].chksum = 0;
     for (j = 0; j < tq->num_threads; ++j) {
         mr_lock_t   per_thread;
-        per_thread = lock_alloc_per_thread(tq->locks[idx].parent);
+        if (tq->shared_memory) {
+            per_thread = lock_alloc_per_thread_shared(
+                tq->locks[idx].parent, tq->shared_arena);
+        } else {
+            per_thread = lock_alloc_per_thread(tq->locks[idx].parent);
+        }
         tq->locks[idx].per_thread[j] = per_thread;
         tq->locks[idx].chksum += (uintptr_t)per_thread;
     }
@@ -336,11 +369,14 @@ static int tq_queue_init(taskQ_t* tq, unsigned int idx)
     return 1;
 
 fail_priv_alloc:
-    lock_free(&tq->locks[idx].parent);
-    tq_free_queue(tq->free_queues[idx]);
+    if (tq->shared_memory)
+        lock_free_shared(tq->locks[idx].parent);
+    else
+        lock_free(tq->locks[idx].parent);
+    tq_free_queue(tq, tq->free_queues[idx]);
     tq->free_queues[idx] = NULL;
 fail_free_queue:
-    tq_free_queue(tq->queues[idx]);
+    tq_free_queue(tq, tq->queues[idx]);
     tq->queues[idx] = NULL;
 
     return 0;
@@ -350,11 +386,31 @@ fail_free_queue:
  * Allocates an initialized queue
  * @return NULL on failure, initialized queue pointer on success
  */
-static queue_t* tq_alloc_queue(void)
+static void *tq_alloc(taskQ_t *tq, size_t size)
+{
+    if (tq->shared_memory)
+        return mem_shared_arena_alloc(tq->shared_arena, size);
+    return mem_malloc(size);
+}
+
+static void *tq_calloc(taskQ_t *tq, size_t num, size_t size)
+{
+    if (tq->shared_memory)
+        return mem_shared_arena_calloc(tq->shared_arena, num, size);
+    return mem_calloc(num, size);
+}
+
+static void tq_free(taskQ_t *tq, void *ptr)
+{
+    if (!tq->shared_memory)
+        mem_free(ptr);
+}
+
+static queue_t* tq_alloc_queue(taskQ_t *tq)
 {
     queue_t *q;
 
-    q = (queue_t*) mem_malloc (sizeof(queue_t));
+    q = (queue_t*)tq_alloc(tq, sizeof(queue_t));
     if (q == NULL) {
         return NULL;
     }
@@ -367,16 +423,16 @@ static queue_t* tq_alloc_queue(void)
 /**
  * Frees an initialized queue that was allocated on the heap.
  */
-static void tq_free_queue(queue_t* q)
+static void tq_free_queue(taskQ_t *tq, queue_t* q)
 {
-    mem_free(q);
+    tq_free(tq, q);
 }
 
 /**
  * Empties out a queue in the task queue by dequeuing and freeing
  * every task.
  */
-static void tq_empty_queue(queue_t* q)
+static void tq_empty_queue(taskQ_t *tq, queue_t* q)
 {
     do {
         tq_entry_t      *entry;
@@ -387,13 +443,15 @@ static void tq_empty_queue(queue_t* q)
 
         entry = queue_entry (queue_elem, tq_entry_t, queue_elem);
         assert (entry != NULL);
-        mem_free (entry);
+        tq_free(tq, entry);
     } while (1);
 }
 
 static inline void tq_finalize_normal(taskQ_t* tq)
 {
     int i;
+    bool shared_memory;
+    mem_shared_arena_t *arena;
 
     assert (tq->queues != NULL);
     assert (tq->free_queues != NULL);
@@ -410,13 +468,18 @@ static inline void tq_finalize_normal(taskQ_t* tq)
     }
 
     /* destroy all first level pointers in tq */
-    mem_free (tq->queues);
-    mem_free (tq->free_queues);
-    mem_free (tq->locks);
-    mem_free (tq->seeds);
+    tq_free(tq, tq->queues);
+    tq_free(tq, tq->free_queues);
+    tq_free(tq, tq->locks);
+    tq_free(tq, tq->seeds);
 
     /* finally kill tq */
-    mem_free (tq);
+    shared_memory = tq->shared_memory;
+    arena = tq->shared_arena;
+    if (shared_memory)
+        mem_shared_arena_destroy(arena);
+    else
+        mem_free(tq);
 }
 
 void tq_finalize (taskQ_t* tq)
@@ -436,7 +499,7 @@ int tq_enqueue (taskQ_t* tq, task_t *task, int lgrp, int tid)
     assert (tq != NULL);
     assert (task != NULL);
 
-    entry = (tq_entry_t *)mem_malloc (sizeof (tq_entry_t));
+    entry = (tq_entry_t *)tq_alloc(tq, sizeof (tq_entry_t));
     if (entry == NULL) {
         return -1;
     }
@@ -464,7 +527,7 @@ int tq_enqueue_seq (taskQ_t* tq, task_t *task, int lgrp)
 
     assert (task != NULL);
 
-    entry = (tq_entry_t *)mem_malloc (sizeof (tq_entry_t));
+    entry = (tq_entry_t *)tq_alloc(tq, sizeof (tq_entry_t));
     if (entry == NULL) {
         return -1;
     }

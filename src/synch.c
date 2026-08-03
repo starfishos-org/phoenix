@@ -32,6 +32,11 @@
 extern mr_lock_ops mr_mcs_ops;
 extern mr_lock_ops mr_ptmutex_ops;
 
+#ifdef MR_LOCK_MCS
+extern mr_lock_t mcs_lock_alloc_shared(void *arena);
+extern mr_lock_t mcs_lock_alloc_per_thread_shared(mr_lock_t parent, void *arena);
+#endif
+
 
 #ifdef MR_LOCK_MCS
 #define OPS mr_mcs_ops
@@ -97,4 +102,46 @@ void lock_free_per_thread (mr_lock_t lock)
 {
     assert (lock != NULL);
     OPS.free_per_thread(lock);
+}
+
+mr_lock_t lock_alloc_shared(void *arena)
+{
+#ifdef MR_LOCK_MCS
+    mr_lock_t lock = mcs_lock_alloc_shared(arena);
+    assert(lock != NULL);
+    return lock;
+#else
+    (void)arena;
+    return lock_alloc();
+#endif
+}
+
+mr_lock_t lock_alloc_per_thread_shared(mr_lock_t parent, void *arena)
+{
+#ifdef MR_LOCK_MCS
+    mr_lock_t lock = mcs_lock_alloc_per_thread_shared(parent, arena);
+    assert(lock != NULL);
+    return lock;
+#else
+    (void)arena;
+    return lock_alloc_per_thread(parent);
+#endif
+}
+
+void lock_free_shared(mr_lock_t lock)
+{
+#ifdef MR_LOCK_MCS
+    assert(lock != NULL);
+#else
+    lock_free(lock);
+#endif
+}
+
+void lock_free_per_thread_shared(mr_lock_t lock)
+{
+#ifdef MR_LOCK_MCS
+    assert(lock != NULL);
+#else
+    lock_free_per_thread(lock);
+#endif
 }

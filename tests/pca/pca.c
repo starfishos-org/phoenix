@@ -34,45 +34,175 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
+#include <pthread.h>
+#include <sys/mman.h>
 
 #include "stddefines.h"
 #include "map_reduce.h"
+#include "../../src/memory.h"
+#include "locality.h"
 #include "processor.h"
 
+#define MAX_PCA_LGRPS 64
+
+typedef enum {
+    PCA_PHASE_MEAN,
+    PCA_PHASE_COVARIANCE,
+} pca_phase_t;
+
 typedef struct {
-    int *matrix;
-    keyval_t *mean;
-    int unit_size;    // size of one row
-    int next_start_row;
-    int next_cov_row;
+    int unit_size;
+    uint64_t next_work;
+    uint64_t total_work;
+    pca_phase_t phase;
+    int num_lgrps;
+    int rows;
+    int cols;
+    int grid_size;
+    size_t matrix_bytes;
+    uint64_t covariance_elems;
+    int *machine_matrix[MAX_PCA_LGRPS];
+    intptr_t *mean;
+    intptr_t *covariance;
 } pca_data_t;
-
-typedef struct {
-    int *matrix;
-} pca_map_data_t;
-
-typedef struct {
-    int start_row;
-    int cov_row;    
-} pca_cov_loc_t;
-
-typedef struct {
-    int *matrix;
-    keyval_t *mean;
-    int size;    // number of cov_locs
-    pca_cov_loc_t *cov_locs;
-} pca_cov_data_t;
 
 #define DEF_GRID_SIZE 100  // all values in the matrix are from 0 to this value 
 #define DEF_NUM_ROWS 10
 #define DEF_NUM_COLS 10
 
-pca_data_t pca_data;
+static pca_data_t *pca_data;
 int num_rows;
 int num_cols;
 int grid_size;
 extern int thread_num;
 int memory_malloc_type;
+static bool shared_coordination;
+
+static void *pca_coord_calloc(size_t num, size_t size)
+{
+    if (shared_coordination)
+        return mem_shared_calloc(num, size);
+    return mem_calloc(num, size);
+}
+
+static void pca_coord_free(void *ptr)
+{
+    if (shared_coordination)
+        mem_shared_free(ptr);
+    else
+        mem_free(ptr);
+}
+
+typedef struct {
+    int lgrp;
+    int *matrix;
+    pca_data_t *data;
+} pca_loader_arg_t;
+
+static void generate_points(int *points, int rows, int cols, int max_value)
+{
+    uint64_t state = 0;
+    size_t elements = (size_t)rows * (size_t)cols;
+
+    for (size_t i = 0; i < elements; ++i) {
+        state = UINT64_C(6364136223846793005) * state + 1;
+        points[i] = (int)(state >> 33) % max_value;
+    }
+}
+
+static void require_success(int ret, int lgrp, const char *operation)
+{
+    if (ret != 0) {
+        fprintf(stderr, "PCA locality: lgrp %d %s failed (ret=%d)\n",
+                lgrp, operation, ret);
+        abort();
+    }
+}
+
+static void *pca_loader(void *opaque)
+{
+    pca_loader_arg_t *arg = opaque;
+    pca_data_t *data = arg->data;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+
+    require_success(proc_bind_thread(loc_get_lgrp_first_cpu(arg->lgrp)),
+                    arg->lgrp, "bind");
+    arg->matrix = mmap(NULL, data->matrix_bytes, PROT_READ | PROT_WRITE,
+                       flags, -1, 0);
+    if (arg->matrix == MAP_FAILED) {
+        fprintf(stderr, "PCA locality: lgrp %d input mmap failed\n", arg->lgrp);
+        abort();
+    }
+    /* This local generator reproduces musl rand() from its default seed, so
+     * replicas match the original benchmark without sharing PRNG state. */
+    generate_points(arg->matrix, data->rows, data->cols, data->grid_size);
+    fprintf(stderr,
+            "[PCA placement] lgrp=%d input=%p bytes=%zu policy=default initialized=local\n",
+            arg->lgrp, (void *)arg->matrix, data->matrix_bytes);
+    return NULL;
+}
+
+static void load_machine_inputs(void)
+{
+    assert(pca_data->num_lgrps > 0 &&
+           pca_data->num_lgrps <= MAX_PCA_LGRPS);
+
+    for (int lgrp = 0; lgrp < pca_data->num_lgrps; ++lgrp) {
+        pthread_t thread;
+        pca_loader_arg_t *arg = pca_coord_calloc(1, sizeof(*arg));
+
+        arg->lgrp = lgrp;
+        arg->data = pca_data;
+        require_success(pthread_create(&thread, NULL, pca_loader, arg),
+                        lgrp, "loader create");
+        require_success(pthread_join(thread, NULL), lgrp, "loader join");
+        pca_data->machine_matrix[lgrp] = arg->matrix;
+        pca_coord_free(arg);
+    }
+    /* pthread_join may resume the caller on the joined worker's machine.
+     * Return before emitting the aggregate evidence so the runner's archived
+     * machine-0 log contains every replica placement. */
+    require_success(proc_bind_thread(loc_get_lgrp_first_cpu(0)), 0,
+                    "main bind");
+    for (int lgrp = 0; lgrp < pca_data->num_lgrps; ++lgrp) {
+        fprintf(stderr,
+                "[PCA placement summary] lgrp=%d input=%p bytes=%zu "
+                "policy=default initializer_cpu=%d\n",
+                lgrp, (void *)pca_data->machine_matrix[lgrp],
+                pca_data->matrix_bytes, loc_get_lgrp_first_cpu(lgrp));
+    }
+}
+
+static void *pca_cleanup_input(void *opaque)
+{
+    pca_loader_arg_t *arg = opaque;
+    int lgrp = arg->lgrp;
+    pca_data_t *data = arg->data;
+
+    require_success(proc_bind_thread(loc_get_lgrp_first_cpu(lgrp)), lgrp,
+                    "cleanup bind");
+    require_success(munmap(data->machine_matrix[lgrp], data->matrix_bytes),
+                    lgrp,
+                    "input unmap");
+    data->machine_matrix[lgrp] = NULL;
+    return NULL;
+}
+
+static void cleanup_machine_inputs(void)
+{
+    for (int lgrp = 0; lgrp < pca_data->num_lgrps; ++lgrp) {
+        pthread_t thread;
+        pca_loader_arg_t *arg = pca_coord_calloc(1, sizeof(*arg));
+
+        arg->lgrp = lgrp;
+        arg->data = pca_data;
+        require_success(pthread_create(
+                            &thread, NULL, pca_cleanup_input, arg),
+                        lgrp, "cleanup create");
+        require_success(pthread_join(thread, NULL), lgrp, "cleanup join");
+        pca_coord_free(arg);
+    }
+}
 
 /** parse_args()
  *  Parse the user arguments to determine the number of rows and colums
@@ -81,7 +211,6 @@ void parse_args(int argc, char **argv)
 {
     int c;
     extern char *optarg;
-    extern int optind;
     
     num_rows = DEF_NUM_ROWS;
     num_cols = DEF_NUM_COLS;
@@ -114,8 +243,8 @@ void parse_args(int argc, char **argv)
         }
     }
     
-    if (num_rows <= 0 || num_cols <= 0 || grid_size <= 0) {
-        fprintf(stderr, "Illegal argument value. All values must be numeric and greater than 0\n");
+    if (num_rows <= 0 || num_cols <= 1 || grid_size <= 0 || thread_num <= 0) {
+        fprintf(stderr, "Rows, grid size, and thread count must be positive; columns must exceed one\n");
         exit(1);
     }
 
@@ -154,22 +283,6 @@ void dump_points(int **vals, int rows, int cols)
     }
 }
 
-/** generate_points()
- *  Create the values in the matrix
- */
-void generate_points(int *pts, int rows, int cols) 
-{    
-    int i, j;
-    
-    for (i=0; i<rows; i++) 
-    {
-        for (j=0; j<cols; j++) 
-        {
-            pts[i * cols + j] = rand() % grid_size;
-        }
-    }
-}
-
 /** mymeancmp()
  *  Comparison Function for computing the mean
  */
@@ -187,43 +300,42 @@ int mymeancmp(const void *v1, const void *v2)
  *  
  * Assigns one or more points to each map task
  */
-int pca_mean_splitter(void *data_in, int req_units, map_args_t *out)
+static uint64_t task_start(const map_args_t *task)
 {
-    assert(data_in);
-    assert(out);
-    
-    pca_data_t *pca_data = (pca_data_t *)data_in;    
-    assert(pca_data->matrix);
-    assert(req_units);
-    
-    /* Assign a fixed number of rows to each map task */
-    if (pca_data->next_start_row >= num_rows) return 0;
-    pca_map_data_t *map_data = (pca_map_data_t *)mem_malloc(sizeof(pca_map_data_t));
-    /* Allocate last few rows if less than required number of rows */
-    if ( (pca_data->next_start_row + req_units) <= num_rows)
-    {
-        out->length = req_units;
-        out->data = (void *)map_data;
-        map_data->matrix =&(pca_data->matrix[pca_data->next_start_row * num_cols]);
-    }
-    else 
-    {
-        out->length = num_rows - pca_data->next_start_row;
-        out->data = (void *)map_data;
-        map_data->matrix = &(pca_data->matrix[pca_data->next_start_row * num_cols]);
-    }
-    //dprintf("Returning %d rows starting at %d\n", out->length, map_data->start_row);
-    pca_data->next_start_row += req_units;
+    uintptr_t encoded = (uintptr_t)task->data;
+
+    assert(encoded > 0);
+    return encoded - 1;
+}
+
+int pca_splitter(void *data_in, int req_units, map_args_t *out)
+{
+    pca_data_t *data = data_in;
+    uint64_t remaining;
+
+    assert(data != NULL && out != NULL && req_units > 0);
+    if (data->next_work >= data->total_work)
+        return 0;
+
+    remaining = data->total_work - data->next_work;
+    out->length = remaining < (uint64_t)req_units ? remaining : req_units;
+    out->data = (void *)(uintptr_t)(data->next_work + 1);
+    data->next_work += out->length;
     return 1;
 }
 
-void *pca_mean_locator(map_args_t *task)
+int pca_task_lgrp(map_args_t *task)
 {
-    assert (task);
+    pca_data_t *data = task->map_data;
+    uint64_t start;
+    uint64_t group;
 
-    pca_map_data_t *map_data = (pca_map_data_t *)task->data;
-
-    return map_data->matrix;
+    assert(task != NULL && data != NULL && data->total_work > 0);
+    start = task_start(task);
+    group = start * (uint64_t)data->num_lgrps / data->total_work;
+    if (group >= (uint64_t)data->num_lgrps)
+        group = data->num_lgrps - 1;
+    return (int)group;
 }
 
 /** pca_mean_map()
@@ -231,116 +343,49 @@ void *pca_mean_locator(map_args_t *task)
  */
 void pca_mean_map(map_args_t *args)
 {
-    int sum;
-    intptr_t mean;
-    int i, j;
-    pca_map_data_t *data = (pca_map_data_t *)args->data;
-    int *matrix = data->matrix;
-    
-    /* Compute the mean for the allocated rows to the map task */
-    for (i=0; i<args->length; i++) 
-    {
-        sum = 0;
-        for (j=0; j<num_cols; j++) 
-        {
-            sum += matrix[i * num_cols + j]; 
-        }
-        mean = sum / num_cols;
-        emit_intermediate((void *)&matrix[i * num_cols], (void *)mean, sizeof(int *));
-    }
-    mem_free(data);
-}
+    pca_data_t *data = args->map_data;
+    uint64_t start = task_start(args);
+    int lgrp = args->lgrp;
+    int *matrix;
 
-/** mycovcmp()
- *  Comparison function for computing the covariance
- */
-int mycovcmp(const void *v1, const void *v2)
-{
-    pca_cov_loc_t *k1 = (pca_cov_loc_t *)v1;
-    pca_cov_loc_t *k2 = (pca_cov_loc_t *)v2;
-    
-    if(k1->start_row < k2->start_row) return -1;
-    else if(k1->start_row > k2->start_row) return 1;
-    else
-    {
-        if(k1->cov_row < k2->cov_row) return -1;
-        else if(k1->cov_row > k2->cov_row) return 1;
-        else return 0;
+    assert(data != NULL && lgrp >= 0 && lgrp < data->num_lgrps);
+    matrix = data->machine_matrix[lgrp];
+    assert(matrix != NULL);
+
+    for (uint64_t offset = 0; offset < (uint64_t)args->length; ++offset) {
+        uint64_t row = start + offset;
+        int64_t sum = 0;
+
+        assert(row < (uint64_t)data->rows);
+        for (int col = 0; col < data->cols; ++col)
+            sum += matrix[row * data->cols + col];
+        data->mean[row] = sum / data->cols;
     }
 }
 
-/** pca_cov_splitter()
- *  Splitter function for computing the covariance
- */
-int pca_cov_splitter(void *data_in, int req_units, map_args_t *out) 
+static uint64_t covariance_row_start(const pca_data_t *data, uint64_t row)
 {
-    assert(data_in);
-    assert(out);
-    
-    pca_data_t *pca_data = (pca_data_t *)data_in;    
-    assert(pca_data->matrix);
-    assert(pca_data->mean);
-    assert(req_units);
-    
-    if ((pca_data->next_start_row >= num_rows) && (pca_data->next_cov_row >= num_rows)) 
-        return 0;
-    
-    pca_cov_loc_t *cov_locs;
-    pca_cov_data_t *cov_data;
-    
-    /* Allocate memory for the structures */
+    return row * (uint64_t)data->rows - row * (row - 1) / 2;
+}
 
-    CHECK_ERROR((cov_locs = (pca_cov_loc_t *)
-                                  mem_malloc(sizeof(pca_cov_loc_t) * req_units)) == NULL);
-    CHECK_ERROR((cov_data = (pca_cov_data_t *)
-                                  mem_malloc(sizeof(pca_cov_data_t))) == NULL);  
+static void covariance_pair(
+    const pca_data_t *data, uint64_t index, int *row, int *cov_row)
+{
+    int low = 0;
+    int high = data->rows;
 
-    out->length = 1;
-    out->data = (void *)cov_data;
-    cov_data->size = 0;
-    
-    /* Compute the boundaries of the region that is to be allocated to the map task*/
-    while (pca_data->next_start_row < num_rows && cov_data->size < req_units)
-    {
-        cov_locs[cov_data->size].start_row = pca_data->next_start_row;
-        cov_locs[cov_data->size].cov_row = pca_data->next_cov_row;
-        
-        if (pca_data->next_cov_row + 1 >= num_rows) 
-        {
-            pca_data->next_start_row ++;    
-            pca_data->next_cov_row = pca_data->next_start_row;
-        }
+    assert(index < data->covariance_elems);
+    while (low + 1 < high) {
+        int middle = low + (high - low) / 2;
+
+        if (covariance_row_start(data, middle) <= index)
+            low = middle;
         else
-        {
-            pca_data->next_cov_row += 1;
-        }        
-        cov_data->size++;
+            high = middle;
     }
-    
-    /* Assign pointers to the matrix with the data */
-    cov_data->matrix = pca_data->matrix;
-    cov_data->mean = pca_data->mean;
-    cov_data->cov_locs = cov_locs;
-    
-#if 0
-    dprintf("Returning %d elems starting <%d,%d> till <%d,%d>\n", 
-                cov_data->size, cov_locs[0].start_row, cov_locs[0].cov_row,
-                cov_locs[cov_data->size-1].start_row, 
-                cov_locs[cov_data->size-1].cov_row);
-#endif
-    
-    return 1;
-}
-
-void *pca_cov_locator (map_args_t *task)
-{
-    assert (task);
-
-    pca_cov_data_t *cov_data = (pca_cov_data_t *)task->data;
-
-    int cov_idx = cov_data->cov_locs[0].cov_row;
-
-    return &cov_data->matrix[cov_idx * num_cols];
+    *row = low;
+    *cov_row = low + (int)(index - covariance_row_start(data, low));
+    assert(*cov_row >= *row && *cov_row < data->rows);
 }
 
 /** pca_cov_map()
@@ -349,60 +394,73 @@ void *pca_cov_locator (map_args_t *task)
  */
 void pca_cov_map(map_args_t *args)
 {
-    assert(args);
-    assert(args->length == 1);
-    int i, j;
-    int *start_row, *cov_row;
-    int start_idx, cov_idx;
-    keyval_t *mean;
-    int sum;
-    intptr_t covariance;
-    intptr_t m1, m2;
-    
-    pca_cov_data_t *cov_data = (pca_cov_data_t *)args->data;
-    mean = cov_data->mean;
-    pca_cov_loc_t *cov_loc;
-    
-    /* compute the covariance for the allocated region */
-    for (i=0; i<cov_data->size; i++) 
-    {
-        start_idx = cov_data->cov_locs[i].start_row;
-        cov_idx = cov_data->cov_locs[i].cov_row;
-        assert(cov_idx >= start_idx);
-        start_row = &cov_data->matrix[start_idx * num_cols];
-        cov_row = &cov_data->matrix[cov_idx * num_cols];
-        sum = 0;
-        //dprintf("Mean for row %d is %d\n", start_idx, *((int *)(mean[start_idx].val)));
-        //dprintf("Mean for row %d is %d\n", cov_idx, *((int *)(mean[cov_idx].val)));
-        m1 = (intptr_t)mean[start_idx].val;
-        m2 = (intptr_t)mean[cov_idx].val;
-        /* XXX: Shouldn't this be num_cols? */
-        for (j=0; j<num_rows; j++)
-        {
-            sum += (start_row[j] - m1) * (cov_row[j] - m2);
-        }
-        
-        covariance = sum / (num_rows-1);
-        
-        //dprintf("Covariance for <%d, %d> is %d\n", start_idx, cov_idx, *covariance);
+    pca_data_t *data = args->map_data;
+    uint64_t index = task_start(args);
+    int lgrp = args->lgrp;
+    int *matrix;
+    int row;
+    int cov_row;
 
-        CHECK_ERROR((cov_loc = (pca_cov_loc_t *)mem_malloc(sizeof(pca_cov_loc_t))) == NULL);
-        cov_loc->start_row = cov_data->cov_locs[i].start_row;
-        cov_loc->cov_row = cov_data->cov_locs[i].cov_row;
-        emit_intermediate((void *)cov_loc, (void *)covariance, sizeof(pca_cov_loc_t));
+    assert(data != NULL && lgrp >= 0 && lgrp < data->num_lgrps);
+    matrix = data->machine_matrix[lgrp];
+    assert(matrix != NULL);
+    covariance_pair(data, index, &row, &cov_row);
+
+    for (uint64_t offset = 0; offset < (uint64_t)args->length; ++offset) {
+        int64_t sum = 0;
+        int *first = &matrix[row * data->cols];
+        int *second = &matrix[cov_row * data->cols];
+
+        for (int col = 0; col < data->cols; ++col) {
+            sum += (first[col] - data->mean[row]) *
+                   (second[col] - data->mean[cov_row]);
+        }
+        data->covariance[index + offset] = sum / (data->cols - 1);
+
+        cov_row++;
+        if (cov_row == data->rows) {
+            row++;
+            cov_row = row;
+        }
+    }
+}
+
+static void verify_small_result(void)
+{
+    int *matrix = pca_data->machine_matrix[0];
+
+    if (num_rows > 64 || num_cols > 64)
+        return;
+
+    for (int row = 0; row < num_rows; ++row) {
+        int64_t sum = 0;
+
+        for (int col = 0; col < num_cols; ++col)
+            sum += matrix[row * num_cols + col];
+        assert(pca_data->mean[row] == sum / num_cols);
     }
 
-    mem_free(cov_data->cov_locs);
-    mem_free(cov_data);
+    for (uint64_t index = 0; index < pca_data->covariance_elems; ++index) {
+        int row;
+        int cov_row;
+        int64_t sum = 0;
+
+        covariance_pair(pca_data, index, &row, &cov_row);
+        for (int col = 0; col < num_cols; ++col) {
+            sum += (matrix[row * num_cols + col] - pca_data->mean[row]) *
+                   (matrix[cov_row * num_cols + col] - pca_data->mean[cov_row]);
+        }
+        assert(pca_data->covariance[index] == sum / (num_cols - 1));
+    }
+    fprintf(stderr, "PCA correctness: sequential small-matrix check passed\n");
 }
 
 
 int main(int argc, char **argv)
 {
-    final_data_t pca_mean_vals;
-    final_data_t pca_cov_vals;
+    final_data_t unused_result;
     map_reduce_args_t map_reduce_args;
-    int i;
+    int64_t covariance_sum = 0;
     struct timeval begin, end;
 #ifdef TIMING
     unsigned int library_time = 0;
@@ -411,40 +469,52 @@ int main(int argc, char **argv)
     get_time (&begin);
     
     parse_args(argc, argv);   
-    
-    // Allocate space for the matrix.  Both MapReduce phases read it from
-    // every worker on every machine, so it is shared state and belongs in
-    // CXL; plain mem_malloc would follow DSM_USER_MALLOC_MODE and strand it
-    // in machine 0's local DRAM under the K-mix/U-mix placement.
-    // The display loop below decrements num_rows, so remember the size here.
-    size_t matrix_size = sizeof(int) * (size_t)num_rows * (size_t)num_cols;
-    pca_data.matrix = (int *)mem_malloc_shared(matrix_size);
-    CHECK_ERROR (pca_data.matrix == NULL);
-    
-    //Generate random values for all the points in the matrix 
-    generate_points(pca_data.matrix, num_rows, num_cols);
-    
-    // Print the points
-    //dump_points(pca_data.matrix, num_rows, num_cols);
-    
-    /* Create the structure to store the mean value */
-    pca_data.unit_size = sizeof(int) * num_cols;    // size of one row
-    pca_data.next_start_row = pca_data.next_cov_row = 0;
-    pca_data.mean = NULL;
+
+    assert((size_t)num_rows <= SIZE_MAX / (size_t)num_cols / sizeof(int));
+    int detected_lgrps = loc_get_num_lgrps();
+
+    assert(detected_lgrps > 0 && detected_lgrps <= MAX_PCA_LGRPS);
+    shared_coordination = detected_lgrps > 1;
+    pca_data = pca_coord_calloc(1, sizeof(*pca_data));
+    pca_data->num_lgrps = detected_lgrps;
+    pca_data->rows = num_rows;
+    pca_data->cols = num_cols;
+    pca_data->grid_size = grid_size;
+    pca_data->matrix_bytes = (size_t)num_rows * num_cols * sizeof(int);
+    pca_data->covariance_elems = (uint64_t)num_rows * (num_rows + 1) / 2;
+
+    load_machine_inputs();
+    pca_data->mean = pca_coord_calloc(num_rows, sizeof(*pca_data->mean));
+    pca_data->covariance = pca_coord_calloc(
+        pca_data->covariance_elems, sizeof(*pca_data->covariance));
+    fprintf(stderr,
+            "[PCA placement] context=%p bytes=%zu mean=%p bytes=%zu "
+            "covariance=%p bytes=%zu policy=%s\n",
+            (void *)pca_data, sizeof(*pca_data),
+            (void *)pca_data->mean,
+            (size_t)num_rows * sizeof(*pca_data->mean),
+            (void *)pca_data->covariance,
+            (size_t)pca_data->covariance_elems *
+                sizeof(*pca_data->covariance),
+            shared_coordination ? "shared" : "private");
+
+    pca_data->unit_size = sizeof(int) * num_cols;
+    pca_data->next_work = 0;
+    pca_data->total_work = num_rows;
+    pca_data->phase = PCA_PHASE_MEAN;
 
     CHECK_ERROR (map_reduce_init ());
     
     // Setup scheduler args for computing the mean
     memset(&map_reduce_args, 0, sizeof(map_reduce_args_t));
-    map_reduce_args.task_data = &pca_data;
+    map_reduce_args.task_data = pca_data;
+    map_reduce_args.map_data = pca_data;
     map_reduce_args.map = pca_mean_map;
-    map_reduce_args.reduce = NULL; // use identity reduce
-    map_reduce_args.splitter = pca_mean_splitter;
-    map_reduce_args.locator = pca_mean_locator;
+    map_reduce_args.splitter = pca_splitter;
+    map_reduce_args.task_lgrp = pca_task_lgrp;
     map_reduce_args.key_cmp = mymeancmp;
-    map_reduce_args.unit_size = pca_data.unit_size;
-    map_reduce_args.partition = NULL; // use default
-    map_reduce_args.result = &pca_mean_vals;
+    map_reduce_args.unit_size = pca_data->unit_size;
+    map_reduce_args.result = &unused_result;
     map_reduce_args.data_size = num_rows * num_cols * sizeof(int);  
     map_reduce_args.L1_cache_size = atoi(GETENV("MR_L1CACHESIZE"));//1024 * 1024 * 16;
     map_reduce_args.num_map_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
@@ -452,6 +522,10 @@ int main(int argc, char **argv)
     map_reduce_args.num_merge_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = (float)atof(GETENV("MR_KEYMATCHFACTOR"));//2;
+    map_reduce_args.map_phase_name = "pca-mean";
+    map_reduce_args.require_map_lgrp_coverage = true;
+    map_reduce_args.shared_runtime = shared_coordination;
+    map_reduce_args.map_only = true;
     
     fprintf(stderr, "PCA Mean: Calling MapReduce Scheduler\n");
 
@@ -473,34 +547,35 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "PCA Mean: MapReduce Completed\n"); 
     
-    assert (pca_mean_vals.length == num_rows);
-    //dprintf("Mean vector:\n");
-
-    pca_data.unit_size = sizeof(int) * num_cols * 2;    // size of two rows
-    pca_data.next_start_row = pca_data.next_cov_row = 0;
-    pca_data.mean = pca_mean_vals.data; // array of keys and values - the keys have been freed tho
+    pca_data->unit_size = sizeof(int) * num_cols * 2;
+    pca_data->next_work = 0;
+    pca_data->total_work = pca_data->covariance_elems;
+    pca_data->phase = PCA_PHASE_COVARIANCE;
     
     // Setup Scheduler args for computing the covariance
     memset(&map_reduce_args, 0, sizeof(map_reduce_args_t));
-    map_reduce_args.task_data = &pca_data;
+    map_reduce_args.task_data = pca_data;
+    map_reduce_args.map_data = pca_data;
     map_reduce_args.map = pca_cov_map;
-    map_reduce_args.reduce = NULL; // use identity reduce
-    map_reduce_args.splitter = pca_cov_splitter;
-    map_reduce_args.locator = pca_cov_locator;
-    map_reduce_args.key_cmp = mycovcmp;
-    map_reduce_args.unit_size = pca_data.unit_size;
-    map_reduce_args.partition = NULL; // use default
-    map_reduce_args.result = &pca_cov_vals;
+    map_reduce_args.splitter = pca_splitter;
+    map_reduce_args.task_lgrp = pca_task_lgrp;
+    map_reduce_args.key_cmp = mymeancmp;
+    map_reduce_args.unit_size = pca_data->unit_size;
+    map_reduce_args.result = &unused_result;
     // data size is number of elements that need to be calculated in a cov matrix
     // multiplied by the size of two rows for each element
-    map_reduce_args.data_size = ((((num_rows * num_rows) - num_rows)/2) + num_rows) * pca_data.unit_size;  
+    map_reduce_args.data_size =
+        pca_data->covariance_elems * pca_data->unit_size;
     map_reduce_args.L1_cache_size = atoi(GETENV("MR_L1CACHESIZE"));//1024 * 1024 * 16;
     map_reduce_args.num_map_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_reduce_threads = atoi(GETENV("MR_NUMTHREADS"));//16;
     map_reduce_args.num_merge_threads = atoi(GETENV("MR_NUMTHREADS"));//8;
     map_reduce_args.num_procs = atoi(GETENV("MR_NUMPROCS"));//16;
     map_reduce_args.key_match_factor = atoi(GETENV("MR_KEYMATCHFACTOR"));//2;
-    map_reduce_args.use_one_queue_per_task = true;
+    map_reduce_args.map_phase_name = "pca-covariance";
+    map_reduce_args.require_map_lgrp_coverage = true;
+    map_reduce_args.shared_runtime = shared_coordination;
+    map_reduce_args.map_only = true;
     
     fprintf(stderr, "PCA Cov: Calling MapReduce Scheduler\n");
 
@@ -525,30 +600,16 @@ int main(int argc, char **argv)
     
     fprintf(stderr, "PCA Cov: MapReduce Completed\n"); 
 
-    // assert(pca_cov_vals.length == ((((num_rows * num_rows) - num_rows)/2) + num_rows));
-    
-    // Free the allocated structures
-    int cnt = 0;
-    intptr_t sum = 0;
+    verify_small_result();
     dprintf("\n\nCovariance sum: ");
-    for (i = 0; i <pca_cov_vals.length; i++) 
-    {
-        sum += (intptr_t)(pca_cov_vals.data[i].val);
-        //dprintf("%5d ", );
-        cnt++;
-        if (cnt == num_rows)
-        {
-            //dprintf("\n"); 
-            num_rows--;
-            cnt = 0;
-        }
-        mem_free(pca_cov_vals.data[i].key);
-    }
-    dprintf ("%" PRIdPTR "\n", sum);
-    
-    mem_free (pca_cov_vals.data);
-    mem_free (pca_mean_vals.data);
-    mem_free_shared (pca_data.matrix, matrix_size);
+    for (uint64_t index = 0; index < pca_data->covariance_elems; ++index)
+        covariance_sum += pca_data->covariance[index];
+    dprintf ("%" PRId64 "\n", covariance_sum);
+
+    pca_coord_free(pca_data->covariance);
+    pca_coord_free(pca_data->mean);
+    cleanup_machine_inputs();
+    pca_coord_free(pca_data);
 
     get_time (&end);
     // gettimeofday(&end, NULL);

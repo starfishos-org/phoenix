@@ -41,6 +41,8 @@ typedef struct
 {
    intptr_t length;
    void *data;
+   void *map_data;              /* Read-only application context for map. */
+   int lgrp;                    /* Locality group selected for this map task. */
 } map_args_t;
 
 /* Single element of result
@@ -101,6 +103,11 @@ typedef int (*splitter_t)(void *, int, map_args_t *);
  * is nearby the physical memory that backs the address. */
 typedef void* (*locator_t)(map_args_t *);
 
+/* A direct locality-group selector for platforms that cannot derive memory
+ * locality from a virtual address.  The return value is a zero-based
+ * locality-group index. */
+typedef int (*task_lgrp_t)(map_args_t *);
+
 /* Partition function takes in the number of reduce tasks, a pointer to
  * a key, and the lendth of the key in bytes. It assigns a key to a reduce task.
  * The value returned is the # of the reduce task where the key will be processed. 
@@ -120,6 +127,7 @@ typedef struct
 {
     void * task_data;           /* The data to run MapReduce on.
                                  * If splitter is NULL, this should be an array. */
+    void * map_data;            /* Optional context passed to map/locality callbacks. */
     off_t data_size;            /* Total # of bytes of data */
     int unit_size;              /* # of bytes for one element 
                                  * (if necessary, on average) */
@@ -131,6 +139,7 @@ typedef struct
     splitter_t splitter;        /* If NULL, the array splitter is used.*/
     locator_t locator;          /* If NULL, no locality based optimization is
                                    performed. */
+    task_lgrp_t task_lgrp;      /* Optional direct map-task locality selector. */
     key_cmp_t key_cmp;          /* Key comparison function. 
                                    Must be user defined.*/
 
@@ -146,6 +155,18 @@ typedef struct
     * time to emit if data is emitted in order,
     * but can increase merge time. */
     bool use_one_queue_per_task;    
+
+    /* Optional map locality diagnostics.  When require_map_lgrp_coverage is
+     * true, every active locality group must execute exactly the number of
+     * tasks assigned to it. */
+    const char *map_phase_name;
+    bool require_map_lgrp_coverage;
+
+    /* Keep cross-machine runtime coordination in explicitly shared memory.
+     * map_only skips identity reduce/merge when the application writes each
+     * uniquely indexed output directly. */
+    bool shared_runtime;
+    bool map_only;
 
     int L1_cache_size;     /* Size of L1 cache in bytes */
     int num_map_threads;   /* # of threads to run map tasks on.
