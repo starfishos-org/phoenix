@@ -35,6 +35,11 @@
 #define PAGE_SIZE (4 * 1024)
 #endif
 
+#ifdef _CHCORE_
+#include <sys/mman.h>
+#include <stdio.h>
+#endif
+
 #define ALIGN_PAGE(ptr) (void *)((uintptr_t)(ptr) & (~(PAGE_SIZE - 1)))
 
 #include "memory.h"
@@ -54,6 +59,44 @@ inline void *mem_malloc_here (size_t size)
     assert(temp);
 
     return temp;
+}
+
+/* Allocate a region that every worker of the job reads or writes, wherever
+ * those workers end up running.  Plain malloc() follows DSM_USER_MALLOC_MODE,
+ * so under the K-mix/U-mix placement it lands in the allocating machine's
+ * local DRAM and every remote worker has to fault the region in one page at a
+ * time.  MAP_FLAG_SHARED pins it to CXL in both mixed modes (the kernel
+ * honours __MT_SHARED__ regardless of DSM_USER_MALLOC_MODE), which is what
+ * "shared state goes to CXL" is supposed to mean.  Matrix Multiply already
+ * does this by hand for its output matrix. */
+inline void *mem_malloc_shared (size_t size)
+{
+#ifdef _CHCORE_
+    void *temp = mmap (NULL, size, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FLAG_SHARED, -1, 0);
+    if (temp == MAP_FAILED) {
+        fprintf (stderr, "mem_malloc_shared: mmap of %zu bytes failed\n", size);
+        return NULL;
+    }
+    return temp;
+#else
+    void *temp = malloc (size);
+    assert(temp);
+
+    return temp;
+#endif
+}
+
+inline void mem_free_shared (void *ptr, size_t size)
+{
+#ifdef _CHCORE_
+    if (ptr != NULL) {
+        munmap (ptr, size);
+    }
+#else
+    (void)size;
+    free (ptr);
+#endif
 }
 
 inline void *mem_calloc (size_t num, size_t size)

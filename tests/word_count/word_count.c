@@ -331,7 +331,10 @@ int main(int argc, char *argv[])
 #else
     int ret;
 
-    fdata = (char *)malloc (finfo.st_size);
+    /* The input is read by every map worker on every machine, so it is shared
+     * state: allocate it in CXL rather than letting it follow
+     * DSM_USER_MALLOC_MODE into the loader machine's local DRAM. */
+    fdata = (char *)mem_malloc_shared (finfo.st_size);
     CHECK_ERROR (fdata == NULL);
 
     ret = read (fd, fdata, finfo.st_size);
@@ -410,7 +413,7 @@ int main(int argc, char *argv[])
 #ifndef NO_MMAP
     CHECK_ERROR(munmap(fdata, finfo.st_size + 1) < 0);
 #else
-    free (fdata);
+    mem_free_shared (fdata, finfo.st_size);
 #endif
     CHECK_ERROR(close(fd) < 0);
 

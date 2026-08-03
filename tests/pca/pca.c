@@ -412,8 +412,14 @@ int main(int argc, char **argv)
     
     parse_args(argc, argv);   
     
-    // Allocate space for the matrix
-    pca_data.matrix = (int *)mem_malloc(sizeof(int) * num_rows * num_cols);
+    // Allocate space for the matrix.  Both MapReduce phases read it from
+    // every worker on every machine, so it is shared state and belongs in
+    // CXL; plain mem_malloc would follow DSM_USER_MALLOC_MODE and strand it
+    // in machine 0's local DRAM under the K-mix/U-mix placement.
+    // The display loop below decrements num_rows, so remember the size here.
+    size_t matrix_size = sizeof(int) * (size_t)num_rows * (size_t)num_cols;
+    pca_data.matrix = (int *)mem_malloc_shared(matrix_size);
+    CHECK_ERROR (pca_data.matrix == NULL);
     
     //Generate random values for all the points in the matrix 
     generate_points(pca_data.matrix, num_rows, num_cols);
@@ -542,7 +548,7 @@ int main(int argc, char **argv)
     
     mem_free (pca_cov_vals.data);
     mem_free (pca_mean_vals.data);
-    mem_free (pca_data.matrix);
+    mem_free_shared (pca_data.matrix, matrix_size);
 
     get_time (&end);
     // gettimeofday(&end, NULL);

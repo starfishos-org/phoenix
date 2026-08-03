@@ -60,6 +60,10 @@ extern void *mem_malloc(size_t size);
 extern void *mem_calloc(size_t num, size_t size);
 extern void *mem_realloc(void *ptr, size_t size);
 extern void mem_free(void *ptr);
+/* CXL-backed allocation for state shared by every worker of the job; see
+ * src/memory.c.  Falls back to malloc/free off ChCore. */
+extern void *mem_malloc_shared(size_t size);
+extern void mem_free_shared(void *ptr, size_t size);
 
 static inline void *MALLOC(size_t size)
 {

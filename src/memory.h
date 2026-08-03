@@ -31,6 +31,8 @@
 
 void *mem_malloc (size_t size);
 void *mem_malloc_here (size_t size);
+void *mem_malloc_shared (size_t size);
+void mem_free_shared (void *ptr, size_t size);
 void *mem_calloc (size_t num, size_t size);
 void *mem_realloc (void *ptr, size_t size);
 void *mem_memcpy (void *dest, const void *src, size_t size);
